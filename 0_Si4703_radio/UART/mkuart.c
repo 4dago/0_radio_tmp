@@ -4,7 +4,7 @@
  *  Created on: 2010-09-04
  *       Autor: Mirosław Kardaś
  */
-#include "../UART/mkuart.h"
+#include "mkuart.h"
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
