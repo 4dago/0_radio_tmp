@@ -10,7 +10,7 @@
 
 #include "Si4703/Si4703.h"
 #include "I2C_TWI/i2c_master.h"
-#include "MKUART/mkuart.h"
+#include "UART/mkuart.h"
 
 
 int main(void) {
