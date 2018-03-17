@@ -33,7 +33,7 @@
 
 
 // ********************* ustalić prawdę !!!!!!!!!!! **************************************
-#define SI4703_ADDR (0x10<<1) //device address shifted over one
+#define SI4703_ADDR 0x20
 #define SI4703_READ  0x21
 #define SI4703_WRITE 0x20
 
@@ -112,7 +112,8 @@ enum DIRECTION {
 
 //------------------------------------------------  funkcje użytkowe ---------------------------
 extern void si4703_init(void);
-// extern uint8_t fm_readRegisters(void);
+extern void si4703_readRegisters(void);
+
 //functions
 void si4703_set_volume(uint8_t volume);
 void si4703_set_channel(int newChannel);

@@ -51,7 +51,7 @@ void i2c_init(uint16_t bitrateKHz)
   Issues a start condition and sends address and transfer direction.
   return 0 = device accessible, 1= failed to access device
 *************************************************************************/
-unsigned char i2c_start(unsigned char address)
+uint8_t i2c_start(uint8_t address)
 {
     uint8_t   twst;
 
@@ -87,7 +87,7 @@ unsigned char i2c_start(unsigned char address)
 
  Input:   address and transfer direction of I2C device
 *************************************************************************/
-void i2c_start_wait(unsigned char address)
+void i2c_start_wait(uint8_t address)
 {
     uint8_t   twst;
 
@@ -138,7 +138,7 @@ void i2c_start_wait(unsigned char address)
  Return:  0 device accessible
           1 failed to access device
 *************************************************************************/
-unsigned char i2c_rep_start(unsigned char address)
+uint8_t i2c_rep_start(uint8_t address)
 {
     return i2c_start( address );
 
@@ -166,7 +166,7 @@ void i2c_stop(void)
   Return:   0 write successful
             1 write failed
 *************************************************************************/
-unsigned char i2c_write( unsigned char data )
+uint8_t i2c_write( uint8_t data )
 {
     uint8_t   twst;
 
@@ -190,7 +190,7 @@ unsigned char i2c_write( unsigned char data )
 
  Return:  byte read from I2C device
 *************************************************************************/
-unsigned char i2c_readAck(void)
+uint8_t i2c_readAck(void)
 {
 	TWCR = (1<<TWINT) | (1<<TWEN) | (1<<TWEA);
 	while(!(TWCR & (1<<TWINT)));
@@ -205,7 +205,7 @@ unsigned char i2c_readAck(void)
 
  Return:  byte read from I2C device
 *************************************************************************/
-unsigned char i2c_readNak(void)
+uint8_t i2c_readNak(void)
 {
 	TWCR = (1<<TWINT) | (1<<TWEN);
 	while(!(TWCR & (1<<TWINT)));
@@ -213,3 +213,5 @@ unsigned char i2c_readNak(void)
     return TWDR;
 
 }/* i2c_readNak */
+
+

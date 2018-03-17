@@ -16,7 +16,7 @@ uint8_t isc_buffer[32]; 						// the size of registers time 2 (since registers a
 
 
 
-//Inicjalizacja
+// Inicjalizacja
 void si4703_init(void) {
 
 	//	1. RESET I SDIO jako wyjścia
@@ -28,44 +28,63 @@ void si4703_init(void) {
 	LO_RS;										// reset układu
 	_delay_ms(1);
 	HI_RS;										// WŁĄCZENIE UKŁADU RAZEM Z SDIO LOW (program), SEN HI (podciągnięte na płytce) -> WYBÓR I2C
-	si4703_pull();
-	si4703_registers[OSCCTRL] = 0x8100;			//Enable the oscillator, from AN230 page 12, rev 0.9 (works)
+	si4703_readRegisters();
+	si4703_registers[OSCCTRL] |= 0x8000;			// Ustaw oscylator z maskowaniem, AN230 page 12, rev 0.9
 }
 
 
-/*//Read the entire register control set from 0x00 to 0x0F
-uint8_t fm_readRegisters(void){
-	int i = 0;
-	int x;
-
-	//Si4703 begins reading from register upper register of 0x0A and reads to 0x0F, then loops to 0x00.
-	uint8_t result = read_i2c_device(SI4703_READ, 32, isc_buffer);
-	i2c_timerproc();
-
-	//Remember, register 0x0A comes in first so we have to shuffle the array around a bit
-	for(x = 0x0A ; ; x++) { //Read in these 32 bytes
-		if(x == 0x10) x = 0; //Loop back to zero
-		si4703_registers[x] = isc_buffer[i++] << 8;
-		si4703_registers[x] |= isc_buffer[i++];
-		if(x == 0x09) break; //We're done!
-	}
-
-	return result;
-}*/
-
-//The device starts reading at reg_index 0x0A, and has 32 bytes
-void si4703_pull(void) {
-	i2c_start(SI4703_ADDR | I2C_READ);
-	for(int x = 0x0A ; ; x++) { 							//Read in these 32 bytes zacznij od [10]
-		if(x == 0x10) x = 0; 								//Loop back to zero na [16] adresie
-		si4703_registers[x] = i2c_readAck() << 8;
-		si4703_registers[x] |= i2c_readAck();
-
-		if(x == 0x08) break; 								//We're [almost] done!
-	}
-//todo sprawdzić na wyświetlaczu to dziwo
+// Odczyt rejestrów (chip wysyła od 0x0A)
+void si4703_readRegisters(void){
+	for(uint8_t x = 0x0A ; ; x++) { 			//Read in these 32 bytes
+			if(x == 0x10) x = 0; 				//Loop back to zero
+			si4703_registers[x] = i2c_readAck() << 8;
+			si4703_registers[x] |= i2c_readAck();
+			if(x == 0x08) break; 				//przedostani rejestr
+		}
 	si4703_registers[0x09] = i2c_readAck() << 8;
-	si4703_registers[0x09] |= i2c_readNak();
+	si4703_registers[0x09] |= i2c_readNak();	//ostatni bajt + nack
 }
 
+/*************************************************************************
+ Zapisz bufor do urządzenia I2C
+
+Parametry:	uint8_t SLA adres urządzenia
+			uint8_t adr adres startowy w pamięci
+			uint8_t len ilość bajtów do zapisu
+			uint16_t *buf bufor z danymi 16bit
+*************************************************************************/
+void i2c_write_buf16b(uint8_t SLA, uint8_t adr, uint8_t len, uint16_t *buf) {
+
+	if (!i2c_start(SLA)) {
+		i2c_write(adr);
+		while (len--)
+			i2c_write(*buf++);
+		i2c_stop();
+	}
+
+
+
+
+	i2c_start_wait(SI4703_ADDR | I2C_WRITE);
+	for (reg_index=0x00; reg_index<0x06; reg_index++) {
+		i2c_write(si4703_data_registers[reg_index+2] >> 8);
+		i2c_write(si4703_data_registers[reg_index+2] & 0x00FF);
+	}
+
+i2c_stop()
+
+}
+
+
+
+void i2c_read_buf(uint8_t SLA, uint8_t adr, uint8_t len, uint16_t *buf) {
+
+	TWI_start();
+	TWI_write(SLA);
+	TWI_write(adr);
+	TWI_start();
+	TWI_write(SLA + 1);
+	while (len--) *buf++ = TWI_read( len ? ACK : NACK );
+	TWI_stop();
+}
 
