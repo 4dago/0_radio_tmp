@@ -20,8 +20,6 @@ int main(void) {
 	USART_Init(__UBRR);						// Inicjalizacja UART
 
 	si4703_init();
-	i2c_init(I2CBITRATE);
-
 
 	sei();										// globalne przerwainia
 
