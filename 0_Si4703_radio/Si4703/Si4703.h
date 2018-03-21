@@ -19,8 +19,8 @@
 //
 //----------------------------------------------------------------------------------------
 // tu konfigurujemy port i piny do jakich podłączymy linie RESET, SDIO
-#define SI4703_RESET_PORT	B
-#define SI4703_RESET_PIN 	6
+#define SI4703_RESET_PORT		B
+#define SI4703_RESET_PIN 		6
 #define SI4703_SDIO_PORT  	B
 #define SI4703_SDIO_PIN		5
 
@@ -47,8 +47,15 @@ enum DIRECTION {
 	DOWN,
 	UP,
 };
-//------------------------------------------------  rejestry SI4703 ---------------------
+//------------------------------------------------  Zmienne globalne --------------------
 
+extern uint16_t si4703_registers[]; 				//There are 16 registers, each 16 bits large
+extern uint8_t reg_index;							// chyba nie musi być globalna
+extern uint16_t ret;
+extern uint8_t stereo;
+extern uint16_t kanal10x;
+
+//------------------------------------------------  rejestry SI4703 ---------------------
 // Nazwy rejestrów
 #define DEVICEID 0x00
 #define CHIPID 0X01
@@ -203,7 +210,7 @@ extern void si4703_writeRegisters2_7(void);
 // eksperyment!
 void si4703_writeBuffor(uint8_t adress, uint8_t len);
 void si4703_read1register(uint8_t adress);
-uint8_t fm_setVolume(uint8_t volume);
+void fm_setVolume(uint8_t volume);
 uint16_t fm_seek(enum DIRECTION dir);
 uint16_t fm_getChannel10x(void);
 void fm_setChannel(uint16_t channel10x);

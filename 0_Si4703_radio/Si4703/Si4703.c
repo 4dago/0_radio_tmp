@@ -10,29 +10,41 @@
 #include "Si4703.h"
 #include "../I2C_TWI/i2c_master.h"
 
-
+//-------------------------------------------------------------------------
+//								Zmienne globalne
+//-------------------------------------------------------------------------
 uint16_t si4703_registers[16]; 				//There are 16 registers, each 16 bits large
-uint8_t isc_buffer[32];						// the size of registers time 2 (since registers are 2 bytes each)
-uint8_t reg_index;
+uint8_t reg_index;							// chyba nie musi być globalna
 uint16_t ret;
 uint8_t stereo;
 uint16_t kanal10x;
 
 
-
-
-uint8_t fm_setVolume(uint8_t volume) {
-  uint8_t result = 0;
+/*************************************************************************
+ Ustawia głośniść
+ Ustawia głośność 0 - 15 (prosty wariant ustawiania)
+  Parametry:	uint8_t volume - głośność
+  todo: udoskonalić, uwzględnić wersje z VOLEXT 06h[8] bit, sprawdzić inne rejestry
+*************************************************************************/
+void fm_setVolume(uint8_t volume) {
   si4703_read1register(SYSCONFIG2);		//Read the current register set
   if(volume < 0) volume = 0;
   if (volume > 15) volume = 15;
   si4703_registers[SYSCONFIG2] &= 0xFFF0; 	//Clear volume bits
   si4703_registers[SYSCONFIG2] |= volume; 	//Set new volume
   si4703_writeBuffor(SYSCONFIG2,1);  		//Update
-  return result;
 }
 
 
+/*************************************************************************
+ Szuka kanału
+ Szuka stacji w górę lub w dół od bieżącej pozycji, aż do odlalezienia lub
+ osiągnięcia końca zakresu,
+ ustawia wskaźnik stereo,
+  Parametry:	enum DIRECTION dir: down 0, up 1
+  Zwraca: uint16_t 0 - limit zakresu, nic nie znalazł; kanał - jeśli znajdzie
+  todo: nieładna, nie uwzględnia parametrów szukania, brak wersji szukania całego zakresu
+*************************************************************************/
 uint16_t fm_seek(enum DIRECTION dir) {
 	si4703_readRegisters();
 	si4703_registers[POWERCFG] &= ~(1 << SKMODE); 			//enable wrapping of frequencies
@@ -67,6 +79,11 @@ uint16_t fm_seek(enum DIRECTION dir) {
 }
 
 
+/*************************************************************************
+ Ustawia kanał
+ Wpisuje do rejesru podany kanał
+ Parametry:	uint16_t channel10x kanał - liczba całkowita
+*************************************************************************/
 void fm_setChannel(uint16_t channel10x) {
 	//Freq(MHz) = 0.100(europa) * Channel + 87.5MHz
 	//97.3 = 0.1 * Chan + 87.5
@@ -98,7 +115,12 @@ void fm_setChannel(uint16_t channel10x) {
 	}
 }
 
-
+/*************************************************************************
+ Odczyt kanału
+ Wczytuje nastawy aktualnego kanału z rejestru
+ Parametry:	brak
+ Zwraca: uint16_t kanał x 10 (liczba całkowita)
+*************************************************************************/
 //Reads the current channel from READCHAN
 //Returns a number like 973 for 97.3MHz
 uint16_t fm_getChannel10x(void) {
@@ -111,7 +133,11 @@ uint16_t fm_getChannel10x(void) {
 }
 
 
-// Inicjalizacja
+/*************************************************************************
+ Inicjalizacja si4703
+ Włączenie I2C, właczenie radia, ustawienia w rejestrach dla Europy
+ Parametry:	brak
+*************************************************************************/
 void si4703_init(void) {
 
 	//	1. RESET I SDIO jako wyjścia
@@ -133,7 +159,7 @@ void si4703_init(void) {
 	si4703_readRegisters();					// aktualizacja danych rejestrów po stabilizacji oscylatora
 	si4703_registers[RDSD] = 0x0000;			// reset danych RDS Si4703-C19 Errata Solution 2: Set RDSD = 0x0000
 	si4703_writeBuffor(RDSD,1);				// wyślij rejestr
-
+	//	4. radio włączone, konfiguracja
 	si4703_readRegisters();					// aktualizacja danych
 	si4703_registers[POWERCFG] |= (1<<DMUTE)|(1<<ENABLE);		// Wyłącz mute; włącz radio
 	si4703_registers[SYSCONFIG1] |= (1<<RDS); 	//Enable RDS
@@ -144,7 +170,7 @@ void si4703_init(void) {
 	si4703_writeRegisters2_7(); 				//Update
 	_delay_ms(110);								// powerup time p.12 AN230
 	si4703_readRegisters();					// aktualizacja danych
-	//	4. radio włączone, konfiguracja
+
 
 }
 
@@ -181,7 +207,12 @@ void si4703_writeRegisters2_7(void) {
 	i2c_stop();
 }
 
-// eksperyment!
+
+/*************************************************************************
+ Zapisz bufora do rejestrów
+ Zapisuje dane z bufora od wskzanego adresu o długości len
+  Parametry:	uint8_t adress - adres startowy, uint8_t len - ilość rejestrów do zapisu
+*************************************************************************/
 void si4703_writeBuffor(uint8_t adress, uint8_t len) {
 	i2c_start(SI4703_ADDR | I2C_WRITE);						// start transmicji	adres + 0
 	i2c_write(adress);										// pod jaki adres
@@ -193,7 +224,12 @@ void si4703_writeBuffor(uint8_t adress, uint8_t len) {
 	i2c_stop();
 }
 
-// eksperyment!
+
+/*************************************************************************
+ Czyta 1 rejestr
+ Czyta rejestr spod adresu i zapisuje w buforze lokalnym
+  Parametry:	uint8_t adress - adres rejestru
+*************************************************************************/
 void si4703_read1register(uint8_t adress) {
 	i2c_start(SI4703_ADDR | I2C_READ);						// start transmicji	adres + 1
 	i2c_write(adress);										// pod jaki adres
@@ -202,42 +238,3 @@ void si4703_read1register(uint8_t adress) {
 	i2c_stop();
 }
 
-/*
-
-byte Si4703_Breakout::updateRegisters() {
-
-  Wire.beginTransmission(SI4703);
-  //A write command automatically begins with register 0x02 so no need to send a write-to address
-  //First we send the 0x02 to 0x07 control registers
-  //In general, we should not write to registers 0x08 and 0x09
-  for(int regSpot = 0x02 ; regSpot < 0x08 ; regSpot++) {
-    byte high_byte = si4703_registers[regSpot] >> 8;
-    byte low_byte = si4703_registers[regSpot] & 0x00FF;
-
-    Wire.write(high_byte); //Upper 8 bits
-    Wire.write(low_byte); //Lower 8 bits
-  }
-
-  //End this transmission
-  byte ack = Wire.endTransmission();
-  if(ack != 0) { //We have a problem!
-    return(FAIL);
-  }
-
-  return(SUCCESS);
-}
-
-*/
-
-/*
-
-void i2c_read_buf(uint8_t SLA, uint8_t adr, uint8_t len, uint16_t *buf) {
-
-TWI_start();
-	TWI_write(SLA);
-	TWI_write(adr);
-	while (len--) TWI_write(*buf++);
-	TWI_stop();
-}
-
-*/
