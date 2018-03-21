@@ -42,6 +42,7 @@
 
 
 //definitions
+extern uint8_t stereo;
 enum DIRECTION {
 	DOWN,
 	UP,
@@ -120,7 +121,7 @@ enum DIRECTION {
 #define SKCNT1 1
 #define SKCNT0 0
 
-// Register 0x05 TEST1
+// Register 0x07 TEST1
 #define XOSCEN 15
 #define AHIZEN 14
 
@@ -203,7 +204,9 @@ extern void si4703_writeRegisters2_7(void);
 void si4703_writeBuffor(uint8_t adress, uint8_t len);
 void si4703_read1register(uint8_t adress);
 uint8_t fm_setVolume(uint8_t volume);
-uint8_t fm_seek(enum DIRECTION dir);
+uint16_t fm_seek(enum DIRECTION dir);
+uint16_t fm_getChannel10x(void);
+void fm_setChannel(uint16_t channel10x);
 
 
 //functions
