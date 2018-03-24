@@ -47,6 +47,10 @@ enum DIRECTION {
 	DOWN,
 	UP,
 };
+
+#define RDS_NO (0)
+#define RDS_FAKE (1)
+#define RDS_AVAILABLE (2)
 //------------------------------------------------  Zmienne globalne --------------------
 
 extern uint16_t si4703_registers[]; 				//There are 16 registers, each 16 bits large
@@ -214,6 +218,13 @@ void fm_setVolume(uint8_t volume);
 uint16_t fm_seek(enum DIRECTION dir);
 uint16_t fm_getChannel10x(void);
 void fm_setChannel(uint16_t channel10x);
+
+
+uint8_t str_putfreq(char * str, uint16_t freq, uint8_t start);
+uint8_t str_putrawfreq(char * str, uint16_t freq, uint8_t start);
+uint8_t str_putuint8(char * str, uint8_t val, uint8_t start);
+uint8_t fm_readRDS(char* ps, char* rt);
+
 
 
 //functions

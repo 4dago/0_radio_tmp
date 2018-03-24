@@ -6,6 +6,7 @@
  */
 #include <avr/io.h>
 #include <util/delay.h>
+#include <string.h>
 
 #include "Si4703.h"
 #include "../I2C_TWI/i2c_master.h"
@@ -18,6 +19,153 @@ uint8_t reg_index;							// chyba nie musi być globalna
 uint16_t ret;
 uint8_t stereo;
 uint16_t kanal10x;
+
+// allowed chars in RDS
+#define FIRST_ALLOWED_CHAR (0x20)
+#define LAST_ALLOWED_CHAR (0x7f)
+
+// rds buffering
+char rdsdata[9];
+char radiotext[65];
+uint8_t rdschanged = 0;
+uint8_t fakerds = 1;
+
+// RDS specific stuff
+#define RDS_PS (0)
+#define RDS_RT (2)
+
+//-------------------------------------------------------------------------
+//					Deklaracje funkcji lokalnych
+//-------------------------------------------------------------------------
+void clearStringBuff(char * buf, uint8_t textsize);
+void clearRDSBuff(void);
+//-------------------------------------------------------------------------
+
+
+//todo Czy tylko ten zakres? brak 0x0D (cr), 0x0A - line feed Code 0x0B: end of headline 0x1F: soft hyphen itd
+static inline void considerrdschar(char * buf, uint8_t place, char ch) {
+	if (ch < FIRST_ALLOWED_CHAR || ch > LAST_ALLOWED_CHAR)
+		return;
+
+	buf[place] = ch;
+}
+
+
+void clearRDSBuff(void) {
+	uint16_t channel = (si4703_registers[READCHAN] & 0x03FF) + 875;
+	clearStringBuff(rdsdata, 8);
+	clearStringBuff(radiotext, 64);
+	str_putfreq(rdsdata, channel, 0);
+	rdschanged = 1;
+	fakerds = 1;
+}
+
+
+void clearStringBuff(char * buf, uint8_t textsize) {
+	memset(buf, ' ', textsize);
+	buf[textsize] = 0;
+}
+
+
+uint8_t str_putfreq(char * str, uint16_t freq, uint8_t start) {
+	start = str_putrawfreq(str, freq, start);
+	str[start++] = 'M';
+	str[start++] = 'H';
+	str[start++] = 'z';
+	return start;
+}
+
+
+uint8_t str_putrawfreq(char * str, uint16_t freq, uint8_t start) {
+	uint8_t fract = freq % 10;
+	uint8_t whole = freq / 10;
+
+	start = str_putuint8(str, whole, start);
+	str[start++] = '.';
+	start = str_putuint8(str, fract, start);
+	return start;
+}
+
+
+
+// draws a uint8 onto a string and returns position of last char
+uint8_t str_putuint8(char * str, uint8_t val, uint8_t start) {
+
+	char buf[3];
+	int8_t ptr;
+	for(ptr=0;ptr<3;++ptr) {
+		buf[ptr] = (val % 10);
+		val /= 10;
+	}
+	for(ptr=2;ptr>0;--ptr) {
+		if (buf[ptr] != 0) break;
+	}
+	for(;ptr>=0;--ptr) {
+		str[start] = '0'+buf[ptr];
+		start++;
+	}
+	return start;
+}
+
+
+//todo słabe, tylko 0A, 2A, zamieszanie ze zmiennymi, powielanie buforów, flaga A/B; do poprawy
+uint8_t fm_readRDS(char* ps, char* rt) {
+	si4703_readRegisters();
+	if(si4703_registers[STATUSRSSI] & (1<<RDSR)) {						// Nowe dane w rejestrze
+		if (fakerds) {
+			memset(rdsdata, ' ', 8);									// Czyść string
+			rdschanged = 1;
+		}
+
+		fakerds = 0;
+
+		//const uint16_t a = si4703_registers[RDSA];
+		const uint16_t b = si4703_registers[RDSB];						// Najważniejszy blok logiki
+		const uint16_t c = si4703_registers[RDSC];
+		const uint16_t d = si4703_registers[RDSD];
+
+		const uint8_t groupid = (b & 0xF000) >> 12;					// Jaka grupa? 16 wersji A i B =32 możliwośći
+		//uint8_t version = b & 0x10;
+		switch(groupid) {
+			case RDS_PS: {												// Grupa 0A lub 0B, dane w bloku D, index to C0-C1 (blok B)
+				const uint8_t index = (b & 0x3)*2;						// max.8znaków +0, inedx: 0,2,4,6
+				// Jeśli index 0x0 nowy tekst, powinno być czyszczenie bufora
+				char Dh = (d & 0xFF00) >> 8;							// Starszy
+				char Dl = d;											// Młodszy
+
+				considerrdschar(rdsdata, index, Dh);					// Zapis do bufora
+				considerrdschar(rdsdata, index +1, Dl);
+
+				rdschanged = 1;
+			};
+			break;
+			case RDS_RT: {												// Radio tekst 64 znaki+0
+				const uint8_t index = (b & 0xF)*4;						// 0, 4,8...64 (wersja 2A bloku RT)
+				// Jeśli index 0x0 nowy tekst, powinno być czyszczenie bufora
+				char Ch = (c & 0xFF00) >> 8;
+				char Cl = c;
+				char Dh = (d & 0xFF00) >> 8;
+				char Dl = d;
+				/* UWAGA Text A/B flag: If the receiver detects a change in the flag (from binary "0" to binary "1" or vice-versa), then the whole
+				RadioText display should be cleared and the newly received RadioText message segments should be
+				written into the display;*/
+				considerrdschar(radiotext, index, Ch);
+				considerrdschar(radiotext, index +1, Cl);
+				considerrdschar(radiotext, index +2, Dh);
+				considerrdschar(radiotext, index +3, Dl);
+			};
+			break;
+		}
+	}
+
+	const uint8_t change = rdschanged;
+	if (change) {
+		strcpy(ps, rdsdata);
+		strcpy(rt, radiotext);
+	}
+	rdschanged = 0;
+	return (change) ? ((fakerds) ? (RDS_FAKE) : (RDS_AVAILABLE)) : (RDS_NO);
+}
 
 
 /*************************************************************************
@@ -57,6 +205,7 @@ uint16_t fm_seek(enum DIRECTION dir) {
 	}
 	si4703_registers[POWERCFG] |= (1<<SEEK); 				//start seeking
 	si4703_writeBuffor(POWERCFG,1);
+	_delay_ms(60);											// nota
 
 	while (!(si4703_registers[STATUSRSSI] & (1<<STC))) {		//coś znalazł
 		si4703_read1register(STATUSRSSI);
@@ -87,10 +236,13 @@ uint16_t fm_seek(enum DIRECTION dir) {
 void fm_setChannel(uint16_t channel10x) {
 	//Freq(MHz) = 0.100(europa) * Channel + 87.5MHz
 	//97.3 = 0.1 * Chan + 87.5
-	//9.8 / 0.2 = 49
+	//9.8 / 0.1 = 49
+/* BEZ SENSU DLA EUROPY
 	uint16_t newChannel = channel10x * 10; 						//973 * 10 = 9730
 	newChannel -= 8750; 										//9730 - 8750 = 980
 	newChannel /= 10; 											//980 / 10 = 98
+*/
+	uint16_t newChannel = channel10x - 875; 						//973 -875 = 98
 
 	//These steps come from AN230 page 20 rev 0.5
 	si4703_read1register(CHANNEL);
@@ -98,7 +250,7 @@ void fm_setChannel(uint16_t channel10x) {
 	si4703_registers[CHANNEL] |= newChannel; 					//Mask in the new channel
 	si4703_registers[CHANNEL] |= (1 << TUNE); 					//Set the TUNE bit to start
 	si4703_writeBuffor(CHANNEL,1);
-	//delay(60); //Wait 60ms - you can use or skip this delay
+	_delay_ms(60); 												//Wait 60ms - nota
 	//Poll to see if STC is set
 	while (1) {
 		si4703_readRegisters();
@@ -162,7 +314,7 @@ void si4703_init(void) {
 	//	4. radio włączone, konfiguracja
 	si4703_readRegisters();					// aktualizacja danych
 	si4703_registers[POWERCFG] |= (1<<DMUTE)|(1<<ENABLE);		// Wyłącz mute; włącz radio
-	si4703_registers[SYSCONFIG1] |= (1<<RDS); 	//Enable RDS
+	si4703_registers[SYSCONFIG1] |= (1<<RDS); 	//Enable RDS (wersja standard)
 	si4703_registers[SYSCONFIG1] |= (1<<DE); 	//50kHz Europe setup
 	si4703_registers[SYSCONFIG2] |= (1<<SPACE0); 				//100kHz channel spacing for Europe
 	si4703_registers[SYSCONFIG2] &= 0xFFF0; 	// Clear volume bits
