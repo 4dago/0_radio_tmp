@@ -20,9 +20,9 @@
 //----------------------------------------------------------------------------------------
 // tu konfigurujemy port i piny do jakich podłączymy linie RESET, SDIO
 #define SI4703_RESET_PORT		B
-#define SI4703_RESET_PIN 		6
-#define SI4703_SDIO_PORT  	B
-#define SI4703_SDIO_PIN		5
+#define SI4703_RESET_PIN 		1
+#define SI4703_SDIO_PORT  	C
+#define SI4703_SDIO_PIN		4
 
 // makrodefinicje operacji na sygnałach sterujących RESET I SDIO—serial data in/data out pin
 #define HI_RS 	PORT(SI4703_RESET_PORT) |= (1<<SI4703_RESET_PIN)					// stan wysoki na linii RESET
@@ -58,6 +58,15 @@ extern uint8_t reg_index;							// chyba nie musi być globalna
 extern uint16_t ret;
 extern uint8_t stereo;
 extern uint16_t kanal10x;
+// extern char rdsdata[];
+// extern char radiotext[];
+extern int8_t glosnosc;
+extern uint8_t rssi;
+extern uint8_t sksnr;
+extern uint8_t skcnt;
+extern uint8_t godziny;
+extern uint8_t minuty;
+extern uint8_t offsetutc;
 
 //------------------------------------------------  rejestry SI4703 ---------------------
 // Nazwy rejestrów
@@ -214,8 +223,8 @@ extern void si4703_writeRegisters2_7(void);
 // eksperyment!
 void si4703_writeBuffor(uint8_t adress, uint8_t len);
 void si4703_read1register(uint8_t adress);
-void fm_setVolume(uint8_t volume);
-uint16_t fm_seek(enum DIRECTION dir);
+void fm_setVolume(int8_t volume);
+uint16_t fm_seek(enum DIRECTION dir, uint8_t rssi, uint8_t snr, uint8_t cnt);
 uint16_t fm_getChannel10x(void);
 void fm_setChannel(uint16_t channel10x);
 
@@ -224,7 +233,7 @@ uint8_t str_putfreq(char * str, uint16_t freq, uint8_t start);
 uint8_t str_putrawfreq(char * str, uint16_t freq, uint8_t start);
 uint8_t str_putuint8(char * str, uint8_t val, uint8_t start);
 uint8_t fm_readRDS(char* ps, char* rt);
-
+void clearRDSBuff(void);
 
 
 //functions

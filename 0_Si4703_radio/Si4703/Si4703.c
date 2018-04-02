@@ -19,6 +19,10 @@ uint8_t reg_index;							// chyba nie musi być globalna
 uint16_t ret;
 uint8_t stereo;
 uint16_t kanal10x;
+int8_t glosnosc;
+uint8_t godziny;
+uint8_t minuty;
+uint8_t offsetutc;
 
 // allowed chars in RDS
 #define FIRST_ALLOWED_CHAR (0x20)
@@ -29,10 +33,14 @@ char rdsdata[9];
 char radiotext[65];
 uint8_t rdschanged = 0;
 uint8_t fakerds = 1;
+uint8_t rssi = 0x19;
+uint8_t sksnr = 0x4;
+uint8_t skcnt = 0x8;
 
 // RDS specific stuff
 #define RDS_PS (0)
 #define RDS_RT (2)
+#define RDS_CT (4)
 
 //-------------------------------------------------------------------------
 //					Deklaracje funkcji lokalnych
@@ -52,10 +60,13 @@ static inline void considerrdschar(char * buf, uint8_t place, char ch) {
 
 
 void clearRDSBuff(void) {
-	uint16_t channel = (si4703_registers[READCHAN] & 0x03FF) + 875;
+//	uint16_t channel = (si4703_registers[READCHAN] & 0x03FF) + 875;				//zrobić inaczej
 	clearStringBuff(rdsdata, 8);
 	clearStringBuff(radiotext, 64);
-	str_putfreq(rdsdata, channel, 0);
+	godziny = 0;
+	minuty = 0;
+	offsetutc = 0;
+//	str_putfreq(rdsdata, channel, 0);											//zrobic inaczej
 	rdschanged = 1;
 	fakerds = 1;
 }
@@ -99,6 +110,7 @@ uint8_t str_putuint8(char * str, uint8_t val, uint8_t start) {
 	}
 	for(ptr=2;ptr>0;--ptr) {
 		if (buf[ptr] != 0) break;
+
 	}
 	for(;ptr>=0;--ptr) {
 		str[start] = '0'+buf[ptr];
@@ -112,12 +124,12 @@ uint8_t str_putuint8(char * str, uint8_t val, uint8_t start) {
 uint8_t fm_readRDS(char* ps, char* rt) {
 	si4703_readRegisters();
 	if(si4703_registers[STATUSRSSI] & (1<<RDSR)) {						// Nowe dane w rejestrze
-		if (fakerds) {
+		if (fakerds) {													// czy złe? / pierwsze uwłaczenie
 			memset(rdsdata, ' ', 8);									// Czyść string
 			rdschanged = 1;
 		}
 
-		fakerds = 0;
+		fakerds = 0;													// zerowanie flagi
 
 		//const uint16_t a = si4703_registers[RDSA];
 		const uint16_t b = si4703_registers[RDSB];						// Najważniejszy blok logiki
@@ -130,6 +142,7 @@ uint8_t fm_readRDS(char* ps, char* rt) {
 			case RDS_PS: {												// Grupa 0A lub 0B, dane w bloku D, index to C0-C1 (blok B)
 				const uint8_t index = (b & 0x3)*2;						// max.8znaków +0, inedx: 0,2,4,6
 				// Jeśli index 0x0 nowy tekst, powinno być czyszczenie bufora
+//				if (0==index) clearRDSBuff();							// jakoś inaczej
 				char Dh = (d & 0xFF00) >> 8;							// Starszy
 				char Dl = d;											// Młodszy
 
@@ -153,8 +166,37 @@ uint8_t fm_readRDS(char* ps, char* rt) {
 				considerrdschar(radiotext, index +1, Cl);
 				considerrdschar(radiotext, index +2, Dh);
 				considerrdschar(radiotext, index +3, Dl);
+
+				rdschanged = 1;
 			};
 			break;
+			case RDS_CT: {												// godzina, daty nie dekoduję
+				minuty = (d & 0x0FC0) >> 6;								//maskowanie minut
+				godziny = ((d & 0xF000) >> 12) | ((c & 0x0001) << 5);
+				offsetutc = (d & 0x001F);
+
+
+
+/*				const uint8_t index = (b & 0xF)*4;						// 0, 4,8...64 (wersja 2A bloku RT)
+				// Jeśli index 0x0 nowy tekst, powinno być czyszczenie bufora
+				char Ch = (c & 0xFF00) >> 8;
+				char Cl = c;
+				char Dh = (d & 0xFF00) >> 8;
+				char Dl = d;
+				 UWAGA Text A/B flag: If the receiver detects a change in the flag (from binary "0" to binary "1" or vice-versa), then the whole
+				RadioText display should be cleared and the newly received RadioText message segments should be
+				written into the display;
+				considerrdschar(radiotext, index, Ch);
+				considerrdschar(radiotext, index +1, Cl);
+				considerrdschar(radiotext, index +2, Dh);
+				considerrdschar(radiotext, index +3, Dl);*/
+
+
+
+
+							rdschanged = 1;
+						};
+						break;
 		}
 	}
 
@@ -174,13 +216,16 @@ uint8_t fm_readRDS(char* ps, char* rt) {
   Parametry:	uint8_t volume - głośność
   todo: udoskonalić, uwzględnić wersje z VOLEXT 06h[8] bit, sprawdzić inne rejestry
 *************************************************************************/
-void fm_setVolume(uint8_t volume) {
-  si4703_read1register(SYSCONFIG2);		//Read the current register set
+void fm_setVolume(int8_t volume) {
+  si4703_readRegisters();		//Read the current register set
   if(volume < 0) volume = 0;
   if (volume > 15) volume = 15;
+  glosnosc = volume;						//zapamiętaj głośność globalnie
   si4703_registers[SYSCONFIG2] &= 0xFFF0; 	//Clear volume bits
   si4703_registers[SYSCONFIG2] |= volume; 	//Set new volume
-  si4703_writeBuffor(SYSCONFIG2,1);  		//Update
+//  si4703_writeBuffor(SYSCONFIG2,1);  		//Update
+si4703_writeRegisters2_7(); 				//Update
+
 }
 
 
@@ -193,7 +238,7 @@ void fm_setVolume(uint8_t volume) {
   Zwraca: uint16_t 0 - limit zakresu, nic nie znalazł; kanał - jeśli znajdzie
   todo: nieładna, nie uwzględnia parametrów szukania, brak wersji szukania całego zakresu
 *************************************************************************/
-uint16_t fm_seek(enum DIRECTION dir) {
+uint16_t fm_seek(enum DIRECTION dir, uint8_t rssi, uint8_t snr, uint8_t cnt) {
 	si4703_readRegisters();
 	si4703_registers[POWERCFG] &= ~(1 << SKMODE); 			//enable wrapping of frequencies
 	if (dir == DOWN) {
@@ -203,14 +248,23 @@ uint16_t fm_seek(enum DIRECTION dir) {
 //		printf("down\n");
 		si4703_registers[POWERCFG] |= (1<<SEEKUP);
 	}
+	si4703_registers[SYSCONFIG2] &= 0x00FF;					// czyść rssi
+	si4703_registers[SYSCONFIG2] |= rssi<<8;				// ustaw rssi
+
+	si4703_registers[SYSCONFIG3] &= 0x00FF;					// czyść sksnr i skcnt
+	si4703_registers[SYSCONFIG3] |= (snr<<4)|(cnt);				// ustaw rssi
+
 	si4703_registers[POWERCFG] |= (1<<SEEK); 				//start seeking
-	si4703_writeBuffor(POWERCFG,1);
+//	si4703_writeBuffor(POWERCFG,1);
+
+	si4703_writeRegisters2_7(); 							//Update
+
 	_delay_ms(60);											// nota
 
 	while (!(si4703_registers[STATUSRSSI] & (1<<STC))) {		//coś znalazł
-		si4703_read1register(STATUSRSSI);
+		si4703_readRegisters();
 	} 															//seek complete!
-	si4703_readRegisters();									// aktualizacja
+//	si4703_readRegisters();									// aktualizacja
 	int valueSFBL = si4703_registers[STATUSRSSI] & (1<<SFBL); 	//Store the value of SFBL
 	stereo = ( si4703_registers[STATUSRSSI] & (1<<ST));			// stereo?
 	si4703_registers[POWERCFG] &= ~(1<<SEEK); 					//Clear the seek bit after seek has completed / zeruje SFBL
@@ -245,11 +299,14 @@ void fm_setChannel(uint16_t channel10x) {
 	uint16_t newChannel = channel10x - 875; 						//973 -875 = 98
 
 	//These steps come from AN230 page 20 rev 0.5
-	si4703_read1register(CHANNEL);
+	si4703_readRegisters();
 	si4703_registers[CHANNEL] &= 0xFE00; 						//Clear out the channel bits
 	si4703_registers[CHANNEL] |= newChannel; 					//Mask in the new channel
 	si4703_registers[CHANNEL] |= (1 << TUNE); 					//Set the TUNE bit to start
-	si4703_writeBuffor(CHANNEL,1);
+
+	si4703_writeRegisters2_7(); 				//Update
+
+//	si4703_writeBuffor(CHANNEL,1);
 	_delay_ms(60); 												//Wait 60ms - nota
 	//Poll to see if STC is set
 	while (1) {
@@ -258,7 +315,10 @@ void fm_setChannel(uint16_t channel10x) {
 			break; //Tuning complete!
 	}
 	si4703_registers[CHANNEL] &= ~(1 << TUNE); //Clear the tune after a tune has completed
-	si4703_writeBuffor(CHANNEL,1);
+//	si4703_writeBuffor(CHANNEL,1);
+
+	si4703_writeRegisters2_7(); 				//Update
+
 	//Wait for the si4703 to clear the STC as well
 	while (1) {
 		si4703_readRegisters();
@@ -302,15 +362,21 @@ void si4703_init(void) {
 	_delay_ms(1);
 	HI_RS;										// WŁĄCZENIE UKŁADU RAZEM Z SDIO LOW (program), SEN HI (podciągnięte na płytce) -> WYBÓR I2C
 
-	i2c_init(I2CBITRATE);						//inicjalizacja i2c
+//	i2c_init(I2CBITRATE);						//inicjalizacja i2c
 	si4703_readRegisters();
 	//	3. procedura włączania
 	si4703_registers[TEST1] |= (1<<XOSCEN);			// Ustaw oscylator, AN230 page 12, rev 0.9
-	si4703_writeBuffor(TEST1,1);				// wyślij rejestr
+//	si4703_writeBuffor(TEST1,1);				// wyślij rejestr
+
+	si4703_writeRegisters2_7(); 				//Update
+
 	_delay_ms(500);
 	si4703_readRegisters();					// aktualizacja danych rejestrów po stabilizacji oscylatora
 	si4703_registers[RDSD] = 0x0000;			// reset danych RDS Si4703-C19 Errata Solution 2: Set RDSD = 0x0000
-	si4703_writeBuffor(RDSD,1);				// wyślij rejestr
+//	si4703_writeBuffor(RDSD,1);				// wyślij rejestr
+
+	si4703_writeRegisters2_7(); 				//Update
+
 	//	4. radio włączone, konfiguracja
 	si4703_readRegisters();					// aktualizacja danych
 	si4703_registers[POWERCFG] |= (1<<DMUTE)|(1<<ENABLE);		// Wyłącz mute; włącz radio
@@ -322,8 +388,6 @@ void si4703_init(void) {
 	si4703_writeRegisters2_7(); 				//Update
 	_delay_ms(110);								// powerup time p.12 AN230
 	si4703_readRegisters();					// aktualizacja danych
-
-
 }
 
 /*************************************************************************um
@@ -359,12 +423,13 @@ void si4703_writeRegisters2_7(void) {
 	i2c_stop();
 }
 
-
-/*************************************************************************
+/*	NIE DZIAŁA ZAPIS SELEKTYWNY REJESTRÓW
+ *
+************************************************************************
  Zapisz bufora do rejestrów
  Zapisuje dane z bufora od wskzanego adresu o długości len
   Parametry:	uint8_t adress - adres startowy, uint8_t len - ilość rejestrów do zapisu
-*************************************************************************/
+************************************************************************
 void si4703_writeBuffor(uint8_t adress, uint8_t len) {
 	i2c_start(SI4703_ADDR | I2C_WRITE);						// start transmicji	adres + 0
 	i2c_write(adress);										// pod jaki adres
@@ -374,14 +439,17 @@ void si4703_writeBuffor(uint8_t adress, uint8_t len) {
 		adress++;
 	}
 	i2c_stop();
-}
+}*/
 
 
-/*************************************************************************
+
+/*  NIE DZIAŁA CZYTANIE SELEKTYWNE REJESTRÓW
+
+************************************************************************
  Czyta 1 rejestr
  Czyta rejestr spod adresu i zapisuje w buforze lokalnym
   Parametry:	uint8_t adress - adres rejestru
-*************************************************************************/
+************************************************************************
 void si4703_read1register(uint8_t adress) {
 	i2c_start(SI4703_ADDR | I2C_READ);						// start transmicji	adres + 1
 	i2c_write(adress);										// pod jaki adres
@@ -390,3 +458,4 @@ void si4703_read1register(uint8_t adress) {
 	i2c_stop();
 }
 
+*/
