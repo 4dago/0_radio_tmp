@@ -103,8 +103,11 @@ int main(void) {
 
     SSD1306_cls(); // czyszczenie zawertosci bufora
 
-
     SSD1306_drawBitmap_P(0,0,bitmap1,128,64,1); // rysuj bitmape
+    SSD1306_display();
+    _delay_ms(1000);
+    SSD1306_cls(); // czyszczenie zawertosci bufora
+
 
 	sei();
 	pokaz_rejestry(0x00, 0x0f, si4703_registers);
@@ -114,15 +117,28 @@ int main(void) {
 	fm_setVolume(5);
 
 
-uint8_t rds;							// status RDS
 char rdsname[9] = "HELLO :)";
 char rdsrt[65] = "Welcome to radio";
 
-SSD1306_cls(); // czyszczenie zawertosci bufora
-SSD1306_puts(0,0,rdsname,2,1,0);
-SSD1306_display();
+// SSD1306_cls(); // czyszczenie zawertosci bufora
+
+/*for (int i = 130; i>-300;i-- ) {
+	SSD1306_puts(i,page0*8,rdsname,1,1,0);
+	SSD1306_refreshPages(page0,1,0,127);
+
+}*/
+
+// SSD1306_display();
 
 	while (1) {
+
+
+//		for (int i = 100; i>-100;i-- ) {
+		SSD1306_puts(0,page0*8,rdsname,1,1,0);
+		SSD1306_puts(0,page1*8,rdsrt,1,1,0);
+		    SSD1306_display();
+//			SSD1306_refreshPages(page0,2,0,128);
+//		}
 //		PORTB ^= (1 << PB5);
 //		_delay_ms(3000);
 //		kierunek = uart_getc();

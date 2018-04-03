@@ -51,6 +51,11 @@ enum DIRECTION {
 #define RDS_NO (0)
 #define RDS_FAKE (1)
 #define RDS_AVAILABLE (2)
+
+
+extern uint8_t RDS_PSready;
+extern uint8_t RDS_RTready;
+extern uint8_t RDS_CTready;
 //------------------------------------------------  Zmienne globalne --------------------
 
 extern uint16_t si4703_registers[]; 				//There are 16 registers, each 16 bits large

@@ -29,6 +29,9 @@ uint8_t offsetutc;
 #define LAST_ALLOWED_CHAR (0x7f)
 
 // rds buffering
+uint8_t RDS_PSready = 0;
+uint8_t RDS_RTready = 0;
+uint8_t RDS_CTready = 0;
 char rdsdata[9];
 char radiotext[65];
 uint8_t rdschanged = 0;
@@ -41,6 +44,13 @@ uint8_t skcnt = 0x8;
 #define RDS_PS (0)
 #define RDS_RT (2)
 #define RDS_CT (4)
+
+#define RDS_GROUP_TYPE_0A (0)
+#define RDS_GROUP_TYPE_0B (1)
+#define RDS_GROUP_TYPE_2A (4)
+#define RDS_GROUP_TYPE_2B (5)
+#define RDS_GROUP_TYPE_4A (8)
+
 
 //-------------------------------------------------------------------------
 //					Deklaracje funkcji lokalnych
@@ -120,6 +130,7 @@ uint8_t str_putuint8(char * str, uint8_t val, uint8_t start) {
 }
 
 
+
 //todo słabe, tylko 0A, 2A, zamieszanie ze zmiennymi, powielanie buforów, flaga A/B; do poprawy
 uint8_t fm_readRDS(char* ps, char* rt) {
 	si4703_readRegisters();
@@ -159,9 +170,9 @@ uint8_t fm_readRDS(char* ps, char* rt) {
 				char Cl = c;
 				char Dh = (d & 0xFF00) >> 8;
 				char Dl = d;
-				/* UWAGA Text A/B flag: If the receiver detects a change in the flag (from binary "0" to binary "1" or vice-versa), then the whole
-				RadioText display should be cleared and the newly received RadioText message segments should be
-				written into the display;*/
+				// UWAGA Text A/B flag: If the receiver detects a change in the flag (from binary "0" to binary "1" or vice-versa), then the whole
+				// RadioText display should be cleared and the newly received RadioText message segments should be
+				// written into the display;
 				considerrdschar(radiotext, index, Ch);
 				considerrdschar(radiotext, index +1, Cl);
 				considerrdschar(radiotext, index +2, Dh);
@@ -174,26 +185,6 @@ uint8_t fm_readRDS(char* ps, char* rt) {
 				minuty = (d & 0x0FC0) >> 6;								//maskowanie minut
 				godziny = ((d & 0xF000) >> 12) | ((c & 0x0001) << 5);
 				offsetutc = (d & 0x001F);
-
-
-
-/*				const uint8_t index = (b & 0xF)*4;						// 0, 4,8...64 (wersja 2A bloku RT)
-				// Jeśli index 0x0 nowy tekst, powinno być czyszczenie bufora
-				char Ch = (c & 0xFF00) >> 8;
-				char Cl = c;
-				char Dh = (d & 0xFF00) >> 8;
-				char Dl = d;
-				 UWAGA Text A/B flag: If the receiver detects a change in the flag (from binary "0" to binary "1" or vice-versa), then the whole
-				RadioText display should be cleared and the newly received RadioText message segments should be
-				written into the display;
-				considerrdschar(radiotext, index, Ch);
-				considerrdschar(radiotext, index +1, Cl);
-				considerrdschar(radiotext, index +2, Dh);
-				considerrdschar(radiotext, index +3, Dl);*/
-
-
-
-
 							rdschanged = 1;
 						};
 						break;
@@ -326,6 +317,163 @@ void fm_setChannel(uint16_t channel10x) {
 			break; //Tuning complete!
 	}
 }
+
+
+/*
+
+
+ Procedura ISR INT0 odpowiedzialna za obsługę wiadomosci RDS. Komplet danych RDS (4, 16-bit. rejestry układu Si4703)
+ sygnalizowany jest poprzez sciągnięcie wyprowadzenia GPIO2 układu Si4703 (wejscie INT0 mikrokontrolera) do „0” przez
+ czas 5ms. Poszczególne rejestry RDS zawierają następujące dane:
+ RDSA - pomijamy, gdyż zawiera nieinteresujące nas dane (Program Inentyfi cation Code tzw.PI)
+ RDSB - bity 15...11 okreslają typ wiadomosci (Group Type +Version) zas bity 1...0 dla typu 0A/0B lub 3...0 dla typu
+ 2A/2B określają indeks przesłanego segmentu danych (segment danych to 2 kolejne znaki wiadomosci dla typu 0A/0B czy 2B
+ lub 4 znaki dla typu 2A). W przypadku wiadomości typu 4A (CT) najmłodsze 2 bity tego rejestru stanowią najstarsze bity
+ daty zapisanej w konwencji MJD.
+ RDSC - dla typu 0A/0B i 2B pomijamy, dla typu 2A zawiera kody ASCII 2 znaków bieżącego segmentu danych (wiadomosci typu
+ PS lub RT), zaś dla typu 4A zawiera datę w zapisie MJD oraz najstarszy bit godziny (bit0 tegoż rejestru).
+ RDSD - dla typu 0A/0B i 2A/2B zawiera kody ASCII 2 znaków bieżącego segmentu danych (wiadomosci typu PS lub RT) zas dla
+ typu 4A zawiera godzinę (bity 15...12), minuty (bity 11...6) oraz offset lokalnego czasu (bity 5...0).
+void fm_readRDS(char* ps, char* rt) {
+	static uint8_t PScharIndex; //Indeks odebranego znaku wiadomosci PS (Program Service)
+	static uint8_t RTcharIndex; //Indeks odebranego znaku wiadomosci RT (Radio Text)
+	static char PStext[9]; //Deklaracja lokalnej tablicy przechowującej nazwę stacji (Program Service): max. 8 znaków + terminator
+	static char RTtext[65]; //Deklaracja lokalnej tablicy przechowującej tekst (Radio Text): max. 64 znaki + terminator
+	register uint8_t groupType; //Typ odebranej wiadomosci RDS umieszczony w starszym bajcie rej. RDSB
+	register uint8_t receivedCharIndex; //Index bieżącego znaku obliczany na podstawie przesłanego indeksu segmentu danych PS/RT
+	register uint8_t A_B; //Wskaźnik zmiany wiadomosci typu RT (niezbędny, gdyż ta sama wiadomosc może byc powtarzana wielokrotnie)
+	static uint8_t RTchanged; //Znacznik zmiany tresci wiadomosci typu RT
+	register uint8_t idx, messageReady = 0; //Zmienne pomocnicze
+//Odczyt bieżących wartosci wyłącznie rejestrów 0x0A...0x0F układu Si4703 (rejestry o adresach 0x0C...0x0F to rejestry RDSA ...RDSD)
+	si4703_readRegisters();
+	if (si4703_registers[STATUSRSSI] & (1 << RDSR)) {
+		groupType = (si4703_registers[RDSB] >> 11); //Typ przechwyconej wiadomosci RDS
+		switch (groupType) {
+		case RDS_GROUP_TYPE_0A: //Basic Tuning and Switching Information only - maks. 8 znaków
+		case RDS_GROUP_TYPE_0B: //Basic Tuning and Switching Information only - maks. 8 znaków
+//Na podstawie przesłanego indeksu segmentu danych obliczamy bieżący indeks znaku (segment*2, gdyż odbieramy po 2 znaki)
+			receivedCharIndex = ((si4703_registers[RDSB] & 0x03) << 1);		// index *2
+			//Sprawdzamy czy odebrany segment znaków ma oczekiwaną wartość indeksu co oznacza, że nie pominięto żadnej ramki
+//			if (PScharIndex == receivedCharIndex) {
+				idx = (si4703_registers[RDSD] >> 8); //Pierwszy, odebrany znak
+				if (idx < ' ' || idx > '}')
+					idx = ' '; //Poprawienie ewentualnych nieodpowiednich kodów znaków
+				PStext[PScharIndex] = idx;
+				idx = si4703_registers[RDSD]; //Drugi, odebrany znak
+				if (idx < ' ' || idx > '}')
+					idx = ' '; //Poprawienie ewentualnych nieodpowiednich kodów znaków
+				PStext[PScharIndex + 1] = idx;
+				PScharIndex += 2; //Zwiększamy bieżący index o 2 znaki
+				if (PScharIndex == 8) //Odebrano kompletną wiadomosc typu Program Service (nazwa stacji)
+						{
+					PStext[8] = '\0'; //Terminator na końcu stringa
+					strcpy(ps, PStext); //Kopiujemy otrzymaną wiadomosc do tablicy dostępnej dla innych modułów
+					RDS_PSready = 1; //Ustawiamy fl agę otrzymania nowej wiadomosci RDS typu PS
+					PScharIndex = 0; //Zerujemy index znaku
+				}
+//			} else
+//				PScharIndex = 0; //Zerujemy index znaku, gdyż zgubiono częsc wiadomosci typu PS
+			break;
+		case RDS_GROUP_TYPE_2A: //Radio Text only - maks. 64 znaki
+//Na podstawie przesłanego indexu segmentu danych obliczamy bieżący index znaku (segment*4, gdyż odbieramy po 4 znaki)
+			receivedCharIndex = ((si4703_registers[RDSB] & 0x0F) << 2);
+//Sprawdzamy czy odebrany segment znaków posiada oczekiwaną wartosc indeksu co oznacza, że nie pominięto żadnej ramki
+			if (RTcharIndex == receivedCharIndex) {
+				RTtext[RTcharIndex] = (si4703_registers[RDSC] >> 8); //Pierwszy, odebrany znak
+				RTtext[RTcharIndex + 1] = si4703_registers[RDSC]; //Drugi, odebrany znak
+				RTtext[RTcharIndex + 2] = (si4703_registers[RDSD] >> 8); //Trzeci, odebrany znak
+				RTtext[RTcharIndex + 3] = si4703_registers[RDSD]; //Czwarty, odebrany znak
+				//Korekta odebranych znaków: LF=’ ‚, CR=’\0’ (znacznik końca stringa)
+				for (idx = 0; idx < 4; idx++) {
+					if (RTtext[RTcharIndex + idx] == 0x0A)
+						RTtext[RTcharIndex + idx] = ' '; //LF
+					if (RTtext[RTcharIndex + idx] == 0x0D) {
+						messageReady = 1;
+						break;
+					}
+				}
+				if (!messageReady) {
+					RTcharIndex += 4;
+					idx = 0;
+				} //Zwiększamy bieżący index o 4 znaki
+				  //Jesli nawet w przesłanej wiadomosci nie wystąpił znacznik końca stringa (CR) ale odebrano 64 znaki to kończymy
+				  //odbieranie bieżącej wiadomosci tekstowej ustawiając odpowiednią fl agę i kopiując wiadomosc do zmiennej globalnej
+				  //pod warunkiem, iż tresc odebranej wiadomosci jest inna niż ostatnio przesłana - o tym „mówi” wskaźnik A-B
+				if (messageReady || RTcharIndex == 64) //Odebrano kompletną wiadomosc typu Radio Text (informacje tekstowe)
+						{
+					//Sprawdzamy czy odebrana własnie wiadomosc typu RT nie jest kopią poprzednio przesłanej - bit ten zmienia się
+					//na wartosc przeciwną za każdym razem, gdy przesyłana jest nowa tresc. Dla kopii wiadomosci pozostaje bez zmian
+					A_B = (si4703_registers[RDSB] >> 4) & 0x01;
+					if (RTchanged != A_B) {
+						RTtext[RTcharIndex + idx] = '\0'; //Terminator na końcu stringa
+						strcpy(rt, RTtext); //Kopiujemy otrzymany tekst do tablicy dostępnej dla innych modułów
+						RDS_RTready = 1; //Ustawiamy fl agę otrzymania nowej wiadomosci RDS typu PS
+						RTchanged = A_B; //Aktualizujemy
+					}
+					RTcharIndex = 0; //Zerujemy index znaku
+				}
+			} else
+				RTcharIndex = 0; //Zerujemy index znaku, gdyż zgubiono częsc wiadomosci typu RT
+			break;
+		case RDS_GROUP_TYPE_2B: //Radio Text only - maks. 32 znaki
+//Na podstawie przesłanego indexu segmentu danych obliczamy bieżący index znaku (segment*2, gdyż odbieramy po 2 znaki)
+			receivedCharIndex = ((si4703_registers[RDSB] & 0x0F) << 1);
+//Sprawdzamy czy odebrany segment znaków posiada oczekiwaną wartosc indeksu co oznacza, że nie pominięto żadnej ramki
+			if (RTcharIndex == receivedCharIndex) {
+				RTtext[RTcharIndex] = (si4703_registers[RDSD] >> 8); //Pierwszy, odebrany znak
+				RTtext[RTcharIndex + 1] = si4703_registers[RDSD]; //Drugi, odebrany znak
+				//Korekta odebranych znaków: LF=’ ‚, CR=’\0’ (znacznik końca stringa)
+				for (idx = 0; idx < 2; idx++) {
+					if (RTtext[RTcharIndex + idx] == 0x0A)
+						RTtext[RTcharIndex + idx] = ' '; //LF
+					if (RTtext[RTcharIndex + idx] == 0x0D) {
+						messageReady = 1;
+						break;
+					}
+				}
+				if (!messageReady) {
+					RTcharIndex += 2;
+					idx = 0;
+				} //Zwiększamy bieżący index o 2 znaki
+				  //Jesli nawet w przesłanej wiadomosci nie wystąpił znacznik końca stringa (CR) ale odebrano 32 znaki to kończymy
+				  //odbieranie bieżącej wiadomosci tekstowej ustawiając odpowiednią fl agę i kopiując wiadomosc do zmiennej globalnej
+				  //pod warunkiem, iż tresc odebranej wiadomosci jest inna niż ostatnio przesłana - o tym „mówi” wskaźnik A-B
+				if (messageReady || RTcharIndex == 32) //Odebrano kompletną wiadomosc typu Radio Text (informacje tekstowe)
+						{
+					//Sprawdzamy czy odebrana własnie wiadomosc typu RT nie jest kopią poprzednio przesłanej - bit ten zmienia się
+					//na wartosc przeciwną za każdym razem, gdy przesyłana jest nowa tresc. Dla kopii wiadomosci pozostaje bez zmian
+					A_B = (si4703_registers[RDSB] >> 4) & 0x01;
+					if (RTchanged != A_B) {
+						RTtext[RTcharIndex + idx] = '\0'; //Terminator na końcu stringa
+						strcpy(rt, RTtext); //Kopiujemy otrzymany tekst do tablicy dostępnej dla innych modułów
+						RDS_RTready = 1; //Ustawiamy fl agę otrzymania nowej wiadomosci RDS typu PS
+						RTchanged = A_B; //Aktualizujemy
+					}
+					RTcharIndex = 0; //Zerujemy index znaku
+				}
+			} else
+				RTcharIndex = 0; //Zerujemy index znaku, gdyż zgubiono częsc wiadomosci typu RT
+			break;
+		case RDS_GROUP_TYPE_4A: //Clock Time and Date only
+			minuty = (si4703_registers[RDSD] >> 6) & 0b111111;
+			godziny = (si4703_registers[RDSD] >> 12);
+			godziny |= ((si4703_registers[RDSC] & 0x01) << 4);
+//Korygujemy obliczoną wartosc godzin o offset czasu lokalnego ( RDSD.5=0 -> offset+,RDSD.5=1 -> offset- )
+//Offset podany jest jako wielokrotnosc wartosci pół godziny
+			if (si4703_registers[RDSD] & 0b100000)
+				godziny -= ((si4703_registers[RDSD] & 0b11111) >> 1);
+			else
+				godziny += ((si4703_registers[RDSD] & 0b11111) >> 1);
+//Ustawiamy flagę otrzymania nowej wiadomosci RDS typu CT tylko w przypadku poprawnych danych
+			if (godziny < 24 && minuty < 60)
+				RDS_CTready = 1;
+			break;
+		}
+	}
+}
+
+*/
+
 
 /*************************************************************************
  Odczyt kanału

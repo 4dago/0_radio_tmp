@@ -45,6 +45,8 @@
 #define REFRESH_MID     		0xB0
 #define REFRESH_MAX         	0xF0
 
+typedef enum {page0, page1, page2, page3, page4, page5, page6, page7} TPAGE;
+
 
         /**
          * DEFINICJE KOMENDY STEROWNIKA
@@ -96,21 +98,38 @@ extern int cursor_x, cursor_y;
  */
 
 void SSD1306_init(uint8_t vcc, uint8_t refresh);
-void SS1306_cmd(uint8_t cmd);
+void SSD1306_cmd(uint8_t cmd);
 void SSD1306_data(uint8_t data);
 
 void SSD1306_display(void);                           		// wyslij na ekran z bufor
+void SSD1306_refreshPages (uint8_t page_nr, uint8_t pages_cnt, uint8_t col_start, uint8_t col_end);
 void SSD1306_setPixel(int x, int y, uint8_t color);     		// zapal pizel w buforze
 void SSD1306_cls(void);                         				// czyszczenie zawartosci bufora
 
 //funkcje graficzne
+void SSD1306_drawRoundRect(int x, int y, int w, int h, int r, uint8_t color);
+void SSD1306_fillRoundRect(int x, int y, int w, int h, int r, uint8_t color);
+void SSD1306_drawTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint8_t color);
+void SSD1306_drawCircle(int x0, int y0, int r, uint8_t color);
+void SSD1306_drawCircleHelper( int x0, int y0, int r, uint8_t cornername, uint8_t color);
+void SSD1306_fillCircle(int x0, int y0, int r, uint8_t color);
+void SSD1306_fillCircleHelper(int x0, int y0, int r, uint8_t cornername, int delta, uint8_t color);
+void SSD1306_fillScreen(uint8_t color);
+void SSD1306_fillRect(int x, int y, int w, int h, uint8_t color);
+void SSD1306_drawRect(int x, int y, int w, int h, uint8_t color);
+
+
+
 void SSD1306_drawBitmap_P(int x, int y, const uint8_t *bitmap, uint8_t w, uint8_t h, uint8_t color); // rysowanie bitmapy
 void SSD1306_drawChar(int x, int y, char c, uint8_t color, uint8_t bg, uint8_t size); // wysowanie litery y lewy gorny róg litery kod asci litery 'A', kolor =1 , tło= 0 , rozmiar standard 1
 void SSD1306_fillRect(int x, int y, int w, int h, uint8_t color); // rysowanie prostokata x,y górny lewy róg prostokata, w szerokosc , h wysokosc
 void SSD1306_drawFastVLine(int x, int y, int h, uint8_t color);
+void SSD1306_drawFastHLine(int x, int y, uint8_t w, uint8_t color);
 void SSD1306_drawLine(int x0, int y0, int x1, int y1, uint8_t color); // rysowanie linii
 void SSD1306_puts(int x, int y, char *str, uint8_t txt_size, uint8_t color, uint8_t bg);
+void SSD1306_puts_P(int x, int y, const char *str, uint8_t txt_size, uint8_t color, uint8_t bg);
 void SSD1306_put_int(int x, int y, int data, uint8_t txt_size, uint8_t color, uint8_t bg);
+
 
 #endif /* SSD1306_H_ */
 

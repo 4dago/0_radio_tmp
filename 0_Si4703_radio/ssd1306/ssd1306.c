@@ -43,10 +43,10 @@ void SSD1306_cmd(uint8_t cmd) {
 //*******************************************************************
 
 //**********************************wysyłanie danych
-void SSD1306_data(uint8_t dat) { // procedura tysłania danych na spi
+void SSD1306_data(uint8_t dat) { 						// procedura tysłania danych na i2c
 
 	// funkja wysyłania danych na spi
-	uint8_t control = 0x40;	//Co (Continuation bit) = 0, D/C (Data/Command Selection bit) = 1
+	uint8_t control = 0x40;						//Co (Continuation bit) = 0, D/C (Data/Command Selection bit) = 1
 	i2c_start( SSD1306_I2C_ADDRESS);
 	i2c_write(control);
 	i2c_write(dat);
@@ -114,8 +114,8 @@ void SSD1306_init(uint8_t vcc, uint8_t refresh) {
 	else
 		SSD1306_cmd(0x14);
 
-	SSD1306_cmd(SSD1306_MEMORYMODE);
-	SSD1306_cmd(0x00);
+	SSD1306_cmd(SSD1306_MEMORYMODE);						// adresowanie pamięci
+	SSD1306_cmd(0x00);										// horizontal
 	SSD1306_cmd(SSD1306_SEGREMAP | 0x1);
 	SSD1306_cmd(SSD1306_COMSCANDEC);
 
@@ -152,5 +152,74 @@ void SSD1306_init(uint8_t vcc, uint8_t refresh) {
 	SSD1306_cmd(SSD1306_DISPLAYON);
 
 }
+
+void SSD1306_refreshPages (uint8_t page_nr, uint8_t pages_cnt, uint8_t col_start, uint8_t col_end) {
+// init ustawia adresowanie horyzontalne dla page (po po col_127 page++ i col_0)
+// dlatego dla każdego page sekwencja poleceń
+	uint8_t page_cnt, col_cnt;											//liczba stron,liczba kolumn
+	uint8_t * ram_buf_start;
+	for(page_cnt=page_nr; page_cnt<(page_nr+pages_cnt); page_cnt++) {
+		SSD1306_cmd(SSD1306_SETLOWCOLUMN | (col_start & 0x0F)); 		// starszy oktet
+		SSD1306_cmd(SSD1306_SETHIGHCOLUMN | col_start >> 4);			// młodszy oktet kolumny
+		SSD1306_cmd(0xB0 + page_cnt);									// page startowy !
+		ram_buf_start = &ssd1306_buf[ (page_cnt*128)+col_start];		// bajt startowy
+
+		i2c_start( SSD1306_I2C_ADDRESS);
+		i2c_write(0x40);
+
+		for(col_cnt=col_start; col_cnt < col_end; col_cnt++) {
+			i2c_write(* ram_buf_start++);
+		}
+		i2c_stop();
+	}
+}
+
+/*
+void mk_ssd1306_refresh_pages( uint8_t page_nr, uint8_t pages_cnt, uint8_t col_start, uint8_t col_end ){
+
+        uint8_t page_cnt, col_cnt;
+        uint8_t * ram_buf_start;
+
+        for( page_cnt = page_nr; page_cnt < (page_nr + pages_cnt); page_cnt++) {
+
+                mk_ssd1306_cmd( SSD1306_SETLOWCOLUMN | (col_start & 0x0f));
+                mk_ssd1306_cmd( SSD1306_SETHIGHCOLUMN | col_start >> 4 );
+                mk_ssd1306_cmd( 0xB0 + page_cnt  );
+
+                ram_buf_start = &ssd1306_buf [ ( page_cnt*128 ) + col_start ];
+
+                #if USE_CS == 1
+                DC_HI;
+                        #if USE_CS2 == 0
+                        CS_LO;
+                        #else
+                        if(!display_nr ) CS_LO;
+                        else CS2_LO;
+                        #endif
+                #endif
+
+                #if USE_SPI_OR_I2C == 1
+                for ( col_cnt = col_start; col_cnt < col_end; col_cnt++ ){
+                        SPIwrite ( *ram_buf_start++ );
+                }
+                #endif
+
+        #if USE_SPI_OR_I2C == 0
+                TWI_start();
+                TWI_write(OLED_I2C_ADDRESS);
+                TWI_write(0x40);
+
+                for(col_cnt=col_start;col_cnt<col_end; col_cnt++){
+                        TWI_write(*ram_buf_start++);
+                }
+
+                TWI_stop();
+        #endif
+        }
+}
+
+*/
+
+
 
     //**********************************************************************************************

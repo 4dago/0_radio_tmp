@@ -52,7 +52,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="ssd1306/ssd1307_tmp.c|I2C_TWI/i2c_twi.c|Si4703_arduino|Si4703/SparkFunSi4703.cpp" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+						<entry excluding="Adafruit-GFX-Library-master|ssd1306/ssd1307_tmp.c|I2C_TWI/i2c_twi.c|Si4703_arduino|Si4703/SparkFunSi4703.cpp" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>
