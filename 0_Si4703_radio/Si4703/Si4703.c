@@ -7,6 +7,7 @@
 #include <avr/io.h>
 #include <util/delay.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "Si4703.h"
 #include "../I2C_TWI/i2c_master.h"
@@ -15,14 +16,20 @@
 //								Zmienne globalne
 //-------------------------------------------------------------------------
 uint16_t si4703_registers[16]; 				//There are 16 registers, each 16 bits large
-uint8_t reg_index;							// chyba nie musi być globalna
-uint16_t ret;
+// uint8_t reg_index;							// chyba nie musi być globalna
+//uint16_t ret;
 uint8_t stereo;
 uint16_t kanal10x;
-int8_t glosnosc;
+int glosnosc;
 uint8_t godziny;
 uint8_t minuty;
 uint8_t offsetutc;
+uint8_t godziny1;
+uint8_t minuty1;
+uint8_t offsetutc1;
+//uint8_t godzin2;
+//uint8_t minuty2;
+//uint8_t offsetutc2;
 
 // allowed chars in RDS
 #define FIRST_ALLOWED_CHAR (0x20)
@@ -32,13 +39,22 @@ uint8_t offsetutc;
 uint8_t RDS_PSready = 0;
 uint8_t RDS_RTready = 0;
 uint8_t RDS_CTready = 0;
+uint8_t A_B = 0;
+
 char rdsdata[9];
-char radiotext[65];
-uint8_t rdschanged = 0;
-uint8_t fakerds = 1;
-uint8_t rssi = 0x19;
-uint8_t sksnr = 0x4;
-uint8_t skcnt = 0x8;
+char rdsdata1[9];
+
+// char rdsdata2[9];
+//char radiotext[65];
+char radiotext1[65];
+
+char glosnik[3];
+
+//uint8_t rdschanged = 0;
+//uint8_t fakerds = 1;
+uint8_t rssi;
+//uint8_t sksnr = 0x4;
+//uint8_t skcnt = 0x8;
 
 // RDS specific stuff
 #define RDS_PS (0)
@@ -72,13 +88,13 @@ static inline void considerrdschar(char * buf, uint8_t place, char ch) {
 void clearRDSBuff(void) {
 //	uint16_t channel = (si4703_registers[READCHAN] & 0x03FF) + 875;				//zrobić inaczej
 	clearStringBuff(rdsdata, 8);
-	clearStringBuff(radiotext, 64);
+	clearStringBuff(radiotext1, 64);
 	godziny = 0;
 	minuty = 0;
 	offsetutc = 0;
 //	str_putfreq(rdsdata, channel, 0);											//zrobic inaczej
-	rdschanged = 1;
-	fakerds = 1;
+//	rdschanged = 1;
+//	fakerds = 1;
 }
 
 
@@ -129,75 +145,182 @@ uint8_t str_putuint8(char * str, uint8_t val, uint8_t start) {
 	return start;
 }
 
+void glosnosc2char(char * buf) {
+	if ( glosnosc < 10 ) {
+		buf[0] = '0';
+		buf[1] = '0' + glosnosc;
+		buf[2] = '\0';
+	} else 	itoa(glosnosc, buf, 10);
+}
+
+void czas2char(char * buf) {
+
+
+
+}
 
 
 //todo słabe, tylko 0A, 2A, zamieszanie ze zmiennymi, powielanie buforów, flaga A/B; do poprawy
-uint8_t fm_readRDS(char* ps, char* rt) {
-	si4703_readRegisters();
-	if(si4703_registers[STATUSRSSI] & (1<<RDSR)) {						// Nowe dane w rejestrze
-		if (fakerds) {													// czy złe? / pierwsze uwłaczenie
-			memset(rdsdata, ' ', 8);									// Czyść string
-			rdschanged = 1;
-		}
+void fm_readRDS(char* ps, char* rt) {
 
-		fakerds = 0;													// zerowanie flagi
+	si4703_readRegisters();
+	if (si4703_registers[STATUSRSSI] & (1 << RDSR)) {					// Nowe dane w rejestrze
 
 		//const uint16_t a = si4703_registers[RDSA];
 		const uint16_t b = si4703_registers[RDSB];						// Najważniejszy blok logiki
 		const uint16_t c = si4703_registers[RDSC];
 		const uint16_t d = si4703_registers[RDSD];
+		const uint8_t groupid = (si4703_registers[RDSB] >> 11);					// Jaka grupa? 16 wersji A i B =32 możliwośći
 
-		const uint8_t groupid = (b & 0xF000) >> 12;					// Jaka grupa? 16 wersji A i B =32 możliwośći
 		//uint8_t version = b & 0x10;
-		switch(groupid) {
-			case RDS_PS: {												// Grupa 0A lub 0B, dane w bloku D, index to C0-C1 (blok B)
-				const uint8_t index = (b & 0x3)*2;						// max.8znaków +0, inedx: 0,2,4,6
-				// Jeśli index 0x0 nowy tekst, powinno być czyszczenie bufora
-//				if (0==index) clearRDSBuff();							// jakoś inaczej
-				char Dh = (d & 0xFF00) >> 8;							// Starszy
-				char Dl = d;											// Młodszy
+		switch (groupid) {
 
-				considerrdschar(rdsdata, index, Dh);					// Zapis do bufora
-				considerrdschar(rdsdata, index +1, Dl);
+		case RDS_GROUP_TYPE_0A: //Basic Tuning and Switching Information only - maks. 8 znaków
+		case RDS_GROUP_TYPE_0B: {								// Grupa 0A lub 0B, dane w bloku D, index to C0-C1 (blok B)
+			const uint8_t index = (b & 0x3) * 2;	// max.8znaków +\0, inedx: 0,2,4,6
+			char Dh = (d & 0xFF00) >> 8;							// Starszy
+			char Dl = d;											// Młodszy
+			// check that the data was received successfully twice
+			// before publishing the station name
+			if ((rdsdata1[index] == Dh) && (rdsdata1[index + 1] == Dl)) {
+				// retrieved the text a second time: store to _PSName2
+				considerrdschar(rdsdata, index, Dh);
+				considerrdschar(rdsdata, index + 1, Dl);
+				rdsdata[8] = '\0';
 
-				rdschanged = 1;
-			};
+				if ((index == 6) && strcmp(rdsdata1, rdsdata) == 0) {
+
+					if (strcmp(rdsdata, ps) != 0) {
+						// publish station name
+						strcpy(ps, rdsdata);
+//						clearStringBuff(rdsdata, 8);
+						clearStringBuff(rdsdata1, 8);
+						RDS_PSready = 1;
+					} // if
+				} // if
+			} // if
+			if ((rdsdata1[index] != Dh) || (rdsdata1[index + 1] != Dl)) {
+				considerrdschar(rdsdata1, index, Dh);
+				considerrdschar(rdsdata1, index + 1, Dl);
+
+				rdsdata1[8] = '\0';
+			} // if
+		};
+		break;
+
+		case RDS_GROUP_TYPE_2A:	{			//Radio Text only - maks. 64 znaki
+//		case RDS_RT: {								// Radio tekst 64 znaki+0
+//			RDS_RTready = 0;
+			const uint8_t index = (b & 0xF) * 4;							// 0, 4,8...64 (wersja 2A bloku RT)
+
+			char Ch = (c & 0xFF00) >> 8;
+			char Cl = c;
+			char Dh = (d & 0xFF00) >> 8;
+			char Dl = d;
+			// UWAGA Text A/B flag: If the receiver detects a change in the flag (from binary "0" to binary "1" or vice-versa), then the whole
+			// RadioText display should be cleared and the newly received RadioText message segments should be
+			// written into the display;
+			uint8_t A_B_tmp = (si4703_registers[RDSB] >> 4) & 0x01;			// aktualna flaga A/B
+
+				//Korekta odebranych znaków: LF=’ ‚, CR=’\0’ (znacznik końca stringa)
+				if (A_B_tmp == A_B) {											// jeśli ta sama przetwarzamy
+					considerrdschar(radiotext1, index, Ch);
+					considerrdschar(radiotext1, index + 1, Cl);
+					considerrdschar(radiotext1, index + 2, Dh);
+					considerrdschar(radiotext1, index + 3, Dl);
+
+//					for (uint8_t idx = 0; idx < 4; idx++) {
+
+						if ((Ch==0x0D)||(Cl==0x0D)||(Dh==0x0D)||(Dl==0x0D)) {	// CR=’\0’ (znacznik końca stringa)
+							A_B = !A_B_tmp;										// aktualizacja flagi A_B
+							radiotext1[64] = '\0';
+							strcpy(rt, radiotext1); //Kopiujemy otrzymany tekst do tablicy dostępnej dla innych modułów
+							clearStringBuff(radiotext1, 65);
+							RDS_RTready = 1;
+							break;
+						}
+//					}
+
+
+			} else {
+				strcpy(rt, radiotext1); //Kopiujemy otrzymany tekst do tablicy dostępnej dla innych modułów
+				clearStringBuff(radiotext1, 65);
+				A_B = A_B_tmp;
+				RDS_RTready = 1;
+			}
+
+//			rdschanged = 1;
+		}
+			;
 			break;
-			case RDS_RT: {												// Radio tekst 64 znaki+0
-				const uint8_t index = (b & 0xF)*4;						// 0, 4,8...64 (wersja 2A bloku RT)
-				// Jeśli index 0x0 nowy tekst, powinno być czyszczenie bufora
-				char Ch = (c & 0xFF00) >> 8;
-				char Cl = c;
-				char Dh = (d & 0xFF00) >> 8;
-				char Dl = d;
-				// UWAGA Text A/B flag: If the receiver detects a change in the flag (from binary "0" to binary "1" or vice-versa), then the whole
-				// RadioText display should be cleared and the newly received RadioText message segments should be
-				// written into the display;
-				considerrdschar(radiotext, index, Ch);
-				considerrdschar(radiotext, index +1, Cl);
-				considerrdschar(radiotext, index +2, Dh);
-				considerrdschar(radiotext, index +3, Dl);
 
-				rdschanged = 1;
-			};
+		case RDS_GROUP_TYPE_2B: { //Radio Text only - maks. 32 znaki
+			const uint8_t index = (b & 0xF) * 2;							// 0, 4,8...64 (wersja 2A bloku RT)
+
+			char Dh = (d & 0xFF00) >> 8;
+			char Dl = d;
+			// UWAGA Text A/B flag: If the receiver detects a change in the flag (from binary "0" to binary "1" or vice-versa), then the whole
+			// RadioText display should be cleared and the newly received RadioText message segments should be
+			// written into the display;
+			uint8_t A_B_tmp = (si4703_registers[RDSB] >> 4) & 0x01;			// aktualna flaga A/B
+
+				//Korekta odebranych znaków: LF=’ ‚, CR=’\0’ (znacznik końca stringa)
+				if (A_B_tmp == A_B) {											// jeśli ta sama przetwarzamy
+					considerrdschar(radiotext1, index + 2, Dh);
+					considerrdschar(radiotext1, index + 3, Dl);
+
+//					for (uint8_t idx = 0; idx < 4; idx++) {
+
+						if ((Dh==0x0D)||(Dl==0x0D)) {	// CR=’\0’ (znacznik końca stringa)
+							A_B = !A_B_tmp;										// aktualizacja flagi A_B
+							radiotext1[33] = '\0';
+							strcpy(rt, radiotext1); //Kopiujemy otrzymany tekst do tablicy dostępnej dla innych modułów
+							clearStringBuff(radiotext1, 65);
+							RDS_RTready = 1;
+							break;
+						}
+//					}
+
+
+			} else {
+				strcpy(rt, radiotext1); //Kopiujemy otrzymany tekst do tablicy dostępnej dla innych modułów
+				clearStringBuff(radiotext1, 65);
+				A_B = A_B_tmp;
+				RDS_RTready = 1;
+			}
+		}
+			;
 			break;
-			case RDS_CT: {												// godzina, daty nie dekoduję
-				minuty = (d & 0x0FC0) >> 6;								//maskowanie minut
-				godziny = ((d & 0xF000) >> 12) | ((c & 0x0001) << 5);
-				offsetutc = (d & 0x001F);
-							rdschanged = 1;
-						};
-						break;
+
+		case RDS_GROUP_TYPE_4A: {					// godzina, daty nie dekoduję
+
+			uint8_t min = (d & 0x0FC0) >> 6;				//maskowanie minut
+			uint8_t godz = ((d & 0xF000) >> 12) | ((c & 0x0001) << 5);
+			uint8_t offset = (d & 0x001F);
+			if ((godziny1 == godz) && (minuty1 == min)
+					&& (offsetutc1 == offset)) {
+				godziny = godz;
+				minuty = min;
+				offsetutc = offset;
+				RDS_CTready = 1;
+			} else {
+				godziny1 = godz;
+				minuty1 = min;
+				offsetutc1 = offset;
+			}
+		}
+			;
+			break;
 		}
 	}
 
-	const uint8_t change = rdschanged;
-	if (change) {
-		strcpy(ps, rdsdata);
-		strcpy(rt, radiotext);
-	}
-	rdschanged = 0;
-	return (change) ? ((fakerds) ? (RDS_FAKE) : (RDS_AVAILABLE)) : (RDS_NO);
+//	const uint8_t change = rdschanged;
+////	if (change) {
+//////		strcpy(ps, rdsdata2);
+////		strcpy(rt, radiotext);
+////	}
+//	rdschanged = 0;
+//	return (change) ? ((fakerds) ? (RDS_FAKE) : (RDS_AVAILABLE)) : (RDS_NO);
 }
 
 
@@ -216,6 +339,7 @@ void fm_setVolume(int8_t volume) {
   si4703_registers[SYSCONFIG2] |= volume; 	//Set new volume
 //  si4703_writeBuffor(SYSCONFIG2,1);  		//Update
 si4703_writeRegisters2_7(); 				//Update
+glosnosc2char(glosnik);
 
 }
 
@@ -229,7 +353,7 @@ si4703_writeRegisters2_7(); 				//Update
   Zwraca: uint16_t 0 - limit zakresu, nic nie znalazł; kanał - jeśli znajdzie
   todo: nieładna, nie uwzględnia parametrów szukania, brak wersji szukania całego zakresu
 *************************************************************************/
-uint16_t fm_seek(enum DIRECTION dir, uint8_t rssi, uint8_t snr, uint8_t cnt) {
+uint16_t fm_seek(enum DIRECTION dir) {
 	si4703_readRegisters();
 	si4703_registers[POWERCFG] &= ~(1 << SKMODE); 			//enable wrapping of frequencies
 	if (dir == DOWN) {
@@ -240,10 +364,10 @@ uint16_t fm_seek(enum DIRECTION dir, uint8_t rssi, uint8_t snr, uint8_t cnt) {
 		si4703_registers[POWERCFG] |= (1<<SEEKUP);
 	}
 	si4703_registers[SYSCONFIG2] &= 0x00FF;					// czyść rssi
-	si4703_registers[SYSCONFIG2] |= rssi<<8;				// ustaw rssi
+	si4703_registers[SYSCONFIG2] |= (RSSI<<8);				// ustaw rssi
 
 	si4703_registers[SYSCONFIG3] &= 0x00FF;					// czyść sksnr i skcnt
-	si4703_registers[SYSCONFIG3] |= (snr<<4)|(cnt);				// ustaw rssi
+	si4703_registers[SYSCONFIG3] |= (SKSNR<<4)|(SKCNT);				// ustaw rssi
 
 	si4703_registers[POWERCFG] |= (1<<SEEK); 				//start seeking
 //	si4703_writeBuffor(POWERCFG,1);
@@ -258,6 +382,7 @@ uint16_t fm_seek(enum DIRECTION dir, uint8_t rssi, uint8_t snr, uint8_t cnt) {
 //	si4703_readRegisters();									// aktualizacja
 	int valueSFBL = si4703_registers[STATUSRSSI] & (1<<SFBL); 	//Store the value of SFBL
 	stereo = ( si4703_registers[STATUSRSSI] & (1<<ST));			// stereo?
+	rssi = si4703_registers[STATUSRSSI];						// rssi
 	si4703_registers[POWERCFG] &= ~(1<<SEEK); 					//Clear the seek bit after seek has completed / zeruje SFBL
 	si4703_writeRegisters2_7();
 
@@ -313,8 +438,10 @@ void fm_setChannel(uint16_t channel10x) {
 	//Wait for the si4703 to clear the STC as well
 	while (1) {
 		si4703_readRegisters();
-		if ((si4703_registers[STATUSRSSI] & (1 << STC)) == 0)
+		if ((si4703_registers[STATUSRSSI] & (1 << STC)) == 0) {
+			rssi = si4703_registers[STATUSRSSI];						// rssi
 			break; //Tuning complete!
+		}
 	}
 }
 
@@ -492,7 +619,10 @@ uint16_t fm_getChannel10x(void) {
 	return (channel);
 }
 
-
+void fm_getRssi (void) {
+	si4703_readRegisters();
+	rssi = si4703_registers[STATUSRSSI];						// rssi
+}
 /*************************************************************************
  Inicjalizacja si4703
  Włączenie I2C, właczenie radia, ustawienia w rejestrach dla Europy
@@ -564,7 +694,7 @@ void si4703_readRegisters(void) {
 *************************************************************************/
 void si4703_writeRegisters2_7(void) {
 	i2c_start(SI4703_ADDR | I2C_WRITE);						// start transmicji	adres + 0
-	for (reg_index=0x02; reg_index<0x08; reg_index++) {		// od rejestru 0x02 do 0x07
+	for (uint16_t reg_index=0x02; reg_index<0x08; reg_index++) {		// od rejestru 0x02 do 0x07
 		i2c_write(si4703_registers[reg_index] >> 8);		// górny bajt
 		i2c_write(si4703_registers[reg_index] & 0x00FF);	// dolny bajt
 	}

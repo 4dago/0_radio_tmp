@@ -174,6 +174,15 @@ void SSD1306_drawBitmap_P(int x, int y, const uint8_t *bitmap, uint8_t w, uint8_
 	}
 }
 
+void SSD1306_drawKnownBitmap_P(int x, int y, const uint8_t *bitmap, uint8_t color) { //może być ikonka lub na cały ekran
+	uint8_t w = pgm_read_byte(bitmap);
+	uint8_t h = pgm_read_byte(bitmap+1);
+	SSD1306_drawBitmap_P(x, y, bitmap+2, w, h, color);
+
+}
+
+
+
 
 // Konkretnie dla fonyu 6x8 !!
 void SSD1306_drawChar(int x, int y, char c, uint8_t color, uint8_t bg, 	uint8_t size) {

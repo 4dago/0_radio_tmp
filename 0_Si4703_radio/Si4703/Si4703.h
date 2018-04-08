@@ -39,7 +39,9 @@
 
 #define I2CBITRATE 400
 //------------------------------------------------  koniec ustawień sprzętowych ---------
-
+#define RSSI 		0x19
+#define SKSNR		0x4
+#define SKCNT		0x8
 
 //definitions
 extern uint8_t stereo;
@@ -48,9 +50,9 @@ enum DIRECTION {
 	UP,
 };
 
-#define RDS_NO (0)
-#define RDS_FAKE (1)
-#define RDS_AVAILABLE (2)
+//#define RDS_NO (0)
+//#define RDS_FAKE (1)
+//#define RDS_AVAILABLE (2)
 
 
 extern uint8_t RDS_PSready;
@@ -60,15 +62,17 @@ extern uint8_t RDS_CTready;
 
 extern uint16_t si4703_registers[]; 				//There are 16 registers, each 16 bits large
 extern uint8_t reg_index;							// chyba nie musi być globalna
-extern uint16_t ret;
+// extern uint16_t ret;
 extern uint8_t stereo;
 extern uint16_t kanal10x;
 // extern char rdsdata[];
 // extern char radiotext[];
-extern int8_t glosnosc;
+extern int glosnosc;
+extern char glosnik[];
 extern uint8_t rssi;
-extern uint8_t sksnr;
-extern uint8_t skcnt;
+//extern uint8_t sksnr;
+//extern uint8_t skcnt;
+
 extern uint8_t godziny;
 extern uint8_t minuty;
 extern uint8_t offsetutc;
@@ -229,15 +233,16 @@ extern void si4703_writeRegisters2_7(void);
 void si4703_writeBuffor(uint8_t adress, uint8_t len);
 void si4703_read1register(uint8_t adress);
 void fm_setVolume(int8_t volume);
-uint16_t fm_seek(enum DIRECTION dir, uint8_t rssi, uint8_t snr, uint8_t cnt);
+uint16_t fm_seek(enum DIRECTION dir);
 uint16_t fm_getChannel10x(void);
 void fm_setChannel(uint16_t channel10x);
+void fm_getRssi (void);
 
 
 uint8_t str_putfreq(char * str, uint16_t freq, uint8_t start);
 uint8_t str_putrawfreq(char * str, uint16_t freq, uint8_t start);
 uint8_t str_putuint8(char * str, uint8_t val, uint8_t start);
-uint8_t fm_readRDS(char* ps, char* rt);
+void fm_readRDS(char* ps, char* rt);
 void clearRDSBuff(void);
 
 

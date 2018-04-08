@@ -102,7 +102,7 @@ void SSD1306_cmd(uint8_t cmd);
 void SSD1306_data(uint8_t data);
 
 void SSD1306_display(void);                           		// wyslij na ekran z bufor
-void SSD1306_refreshPages (uint8_t page_nr, uint8_t pages_cnt, uint8_t col_start, uint8_t col_end);
+void SSD1306_refreshPages (uint8_t page_start, uint8_t page_end, uint8_t col_start, uint8_t col_end);
 void SSD1306_setPixel(int x, int y, uint8_t color);     		// zapal pizel w buforze
 void SSD1306_cls(void);                         				// czyszczenie zawartosci bufora
 
@@ -121,6 +121,7 @@ void SSD1306_drawRect(int x, int y, int w, int h, uint8_t color);
 
 
 void SSD1306_drawBitmap_P(int x, int y, const uint8_t *bitmap, uint8_t w, uint8_t h, uint8_t color); // rysowanie bitmapy
+void SSD1306_drawKnownBitmap_P(int x, int y, const uint8_t *bitmap, uint8_t color);
 void SSD1306_drawChar(int x, int y, char c, uint8_t color, uint8_t bg, uint8_t size); // wysowanie litery y lewy gorny róg litery kod asci litery 'A', kolor =1 , tło= 0 , rozmiar standard 1
 void SSD1306_fillRect(int x, int y, int w, int h, uint8_t color); // rysowanie prostokata x,y górny lewy róg prostokata, w szerokosc , h wysokosc
 void SSD1306_drawFastVLine(int x, int y, int h, uint8_t color);

@@ -62,11 +62,15 @@ void SSD1306_data(uint8_t dat) { 						// procedura tysłania danych na i2c
 
     // *****************************przeniesienie bufora na lcd
     void SSD1306_display( void )
-        {
-                SSD1306_cmd( SSD1306_SETLOWCOLUMN       | 0x0 );			// kolumna min. =0
-                SSD1306_cmd( SSD1306_SETHIGHCOLUMN      | 0x0 );			// kolumna max. = 0
-                SSD1306_cmd( SSD1306_SETSTARTLINE       | 0x0 );			// linia nr. 0
 
+
+        {
+    	// ************************ niepotrzebn w adresowaniu horizontal ************************
+
+//                SSD1306_cmd( SSD1306_SETLOWCOLUMN       | 0x0 );			// kolumna min. =0 TRYB PAGE!!!
+//                SSD1306_cmd( SSD1306_SETHIGHCOLUMN      | 0x0 );			// kolumna max. = 0 TRYB PAGE!!!
+//                SSD1306_cmd( SSD1306_SETSTARTLINE       | 0x0 );			// linia nr. 0
+    	// **************************************************************************************
 
                 //Funkcje od TWI są takie same jak w BB. Jedyna modyfikacja:
                    // void TWI_write_buf( uint8_t SLA, uint8_t adr, [b]uint8_t[/b] len, uint8_t *buf )
@@ -116,6 +120,7 @@ void SSD1306_init(uint8_t vcc, uint8_t refresh) {
 
 	SSD1306_cmd(SSD1306_MEMORYMODE);						// adresowanie pamięci
 	SSD1306_cmd(0x00);										// horizontal
+
 	SSD1306_cmd(SSD1306_SEGREMAP | 0x1);
 	SSD1306_cmd(SSD1306_COMSCANDEC);
 
@@ -151,23 +156,49 @@ void SSD1306_init(uint8_t vcc, uint8_t refresh) {
 	SSD1306_cmd(SSD1306_NORMALDISPLAY);
 	SSD1306_cmd(SSD1306_DISPLAYON);
 
+
+	//*************** test 3 ************** DZIAŁA !
+	// https://www.avrfreaks.net/forum/ssd1306-lcd-initialization-commands
+
+	SSD1306_cmd(SSD1306_COLUMNADDR); 					// 0x21 COMMAND
+	SSD1306_cmd(0); 									// Column start address
+	SSD1306_cmd(SSD1306_WIDTH-1); 						// Column end address
+
+	SSD1306_cmd(SSD1306_PAGEADDR); 					// 0x22 COMMAND
+	SSD1306_cmd(0); 									// Start Page address
+	SSD1306_cmd((SSD1306_HEIGHT/8)-1);					// End Page address
+
+
+
 }
 
-void SSD1306_refreshPages (uint8_t page_nr, uint8_t pages_cnt, uint8_t col_start, uint8_t col_end) {
+void SSD1306_refreshPages (uint8_t page_start, uint8_t page_end, uint8_t col_start, uint8_t col_end) {
 // init ustawia adresowanie horyzontalne dla page (po po col_127 page++ i col_0)
 // dlatego dla każdego page sekwencja poleceń
 	uint8_t page_cnt, col_cnt;											//liczba stron,liczba kolumn
 	uint8_t * ram_buf_start;
-	for(page_cnt=page_nr; page_cnt<(page_nr+pages_cnt); page_cnt++) {
-		SSD1306_cmd(SSD1306_SETLOWCOLUMN | (col_start & 0x0F)); 		// starszy oktet
-		SSD1306_cmd(SSD1306_SETHIGHCOLUMN | col_start >> 4);			// młodszy oktet kolumny
-		SSD1306_cmd(0xB0 + page_cnt);									// page startowy !
-		ram_buf_start = &ssd1306_buf[ (page_cnt*128)+col_start];		// bajt startowy
+
+	SSD1306_cmd(SSD1306_COLUMNADDR); 					// 0x21 COMMAND
+		SSD1306_cmd(col_start); 									// Column start address
+		SSD1306_cmd(col_end); 						// Column end address
+
+		SSD1306_cmd(SSD1306_PAGEADDR); 					// 0x22 COMMAND
+		SSD1306_cmd(page_start); 									// Start Page address
+		SSD1306_cmd(page_end);					// End Page address
+
 
 		i2c_start( SSD1306_I2C_ADDRESS);
 		i2c_write(0x40);
+	for(page_cnt=page_start; page_cnt<(page_end+1); page_cnt++) {
+//		SSD1306_cmd(SSD1306_SETLOWCOLUMN | (col_start & 0x0F)); 		// starszy oktet kolumny
+//		SSD1306_cmd(SSD1306_SETHIGHCOLUMN | col_start >> 4);			// młodszy oktet kolumny
+//		SSD1306_cmd(0xB0 + page_cnt);									// aktualny page
 
-		for(col_cnt=col_start; col_cnt < col_end; col_cnt++) {
+		ram_buf_start = &ssd1306_buf[ (page_cnt*128)+col_start];		// bajt startowy
+
+
+
+		for(col_cnt=col_start; col_cnt < col_end+1; col_cnt++) {
 			i2c_write(* ram_buf_start++);
 		}
 		i2c_stop();
