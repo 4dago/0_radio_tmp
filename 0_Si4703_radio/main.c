@@ -19,6 +19,11 @@
 
 volatile uint8_t licznik;
 volatile uint8_t RDStest;
+volatile uint8_t danePozostale;
+volatile uint8_t klawisz=0;
+
+// timery programowe
+volatile uint16_t Timer1;
 
 
 
@@ -63,10 +68,14 @@ int main(void) {
 	TCCR2A  	|= (1<<WGM21);							// tryb CTC s. 205
 	TCCR2B		|= (1<<CS22) | (1<<CS21) | (1<<CS20);	// preskaler 1024
 
-	OCR2A		= (F_CPU / 1024UL / 300UL) - 1; 		// przerwanie co 5ms (100Hz)
+	OCR2A		= (F_CPU / 1024UL / 156UL); 		// przerwanie co 10ms (100Hz)
 	TIMSK2		|= (1<<OCIE2A);							// Odblokowanie przerwania CompareMatch
 
 	// *************************** inicjalizacje ********************************
+	DDRB |= (1 << PB5);				// LED testowy
+//	DDRB |= ~(1 << PB0);			// PB0 jako wejście
+	PORTB |= (1 << PB0);			// podciągnięte PB0
+
 
 	USART_Init(__UBRR);								// Inicjalizacja UART
 	i2c_init(I2CBITRATE);								//inicjalizacja i2c
@@ -76,167 +85,133 @@ int main(void) {
 	// *************************** przygotowania ********************************
 
     sei();												// globalne przerwainia
-	fm_setChannel(967);
+	fm_setChannel(988);
 	fm_setVolume(5);
 
 	pokaz_rejestry(0x00, 0x0f, si4703_registers);
 
 	char rdsname[9] = "HELLO :)";
 	char rdsrt[65] = "*** Radyjo *** MADZINKI ***";
-	DDRB |= (1 << PB5);	// LED testowy
+
 
 
 
 	// *************************** warstwa 1 ********************************
 
-    SSD1306_cls(); 									// czyszczenie zawertosci bufora
-	SSD1306_drawKnownBitmap_P(0,page0*8,RADIO16x16,1); // rysuj radio
-    SSD1306_drawKnownBitmap_P(0,page6*8-1,GLOSNIK8x16,1); // rysuj glosnik
-    SSD1306_drawKnownBitmap_P(41,page6*8,RSSI19x16,1); // rysuj bitmapehar
+    SSD1306_cls(); 										// czyszczenie zawertosci bufora
+	SSD1306_drawKnownBitmap_P(0,page0*8,RADIO16x16,1); 	// rysuj radio
+    SSD1306_drawKnownBitmap_P(0,page6*8-1,GLOSNIK8x16,1);	// rysuj glosnik
+    SSD1306_drawKnownBitmap_P(41,page6*8,RSSI19x16,1); 	// rysuj rssi
 
-    SSD1306_display();
+    SSD1306_display();										// przepisz bufor
 
+	// *************************** warstwa 2 ********************************
+	// **********************************************************************
 	while (1) {
 
-/*
-		if (1 == RDS_RTready) {
-		for (int i = 130; i>-606;i-- ) {
-			SSD1306_puts(i,page3*8,rdsrt,1,1,0);
-			SSD1306_refreshPages(page3,3,0,127);
-		}
-		// *************** test 3 ************** DZIAŁA !
-		// https://www.avrfreaks.net/forum/ssd1306-lcd-initialization-commands
-
-		SSD1306_cmd(SSD1306_COLUMNADDR); 					// 0x21 COMMAND
-		SSD1306_cmd(0); 									// Column start address
-		SSD1306_cmd(SSD1306_WIDTH-1); 						// Column end address
-
-		SSD1306_cmd(SSD1306_PAGEADDR); 					// 0x22 COMMAND
-		SSD1306_cmd(0); 									// Start Page address
-		SSD1306_cmd((SSD1306_HEIGHT/8)-1);					// End Page address
-
-		RDS_RTready=0;
-		}
-*/
-
-		if (1 == RDS_PSready) {
+		if (1 == radioFlagi.PS) {								// jeśli jest ps
 			SSD1306_puts(20, page0 * 8, rdsname, 2, 1, 0);
-//			SSD1306_display();
-			RDS_PSready = 0;
+//			RDS_PSready = 0;
+			radioFlagi.PS = 0;
 		}
 
-		if (1 == RDS_CTready) {
-			SSD1306_put_int(100, page4 * 8, godziny + offsetutc / 2, 1, 1, 0);
-			SSD1306_put_int(100, page5 * 8, minuty, 1, 1, 0);
-//			SSD1306_display();
-//			uart_putint(godziny+offsetutc/2, 10);
-//			uart_puts(":");
-//			uart_putint(minuty, 10);
-//			uart_puts(" , offset: ");
-//			uart_putint(offsetutc, 10);
-			RDS_CTready = 0;
+		if (1 == radioFlagi.CT) {								// jeśli jest ct
+
+			SSD1306_put_int(110, page4 * 8, godziny + offsetutc / 2, 1, 1, 0);
+			SSD1306_put_int(110, page5 * 8, minuty, 1, 1, 0);
+//			RDS_CTready = 0;
+			radioFlagi.CT=0;
 		}
 
-//		if (1 == RDS_RTready) {
-//			for (int i = 100; i > -100; i--) {
-//				SSD1306_puts(i, page2 * 8, rdsrt, 1, 1, 0);
-//				SSD1306_refreshPages(page2, 1, 0, 128);
-//			}
-//			RDS_RTready = 0;
-//		}
-//		}
-//		PORTB ^= (1 << PB5);
-//		_delay_ms(3000);
-//		kierunek = uart_getc();
+		if (RDStest) {										// flaga ustawiana w pzerwaniu
 
-			if (RDStest) {
+			static int i;
 
-				static int i;
+			if (1 == radioFlagi.RT) {
 
-				if (i<-387) {i = 128; RDS_RTready = 0;}
-				i--;
+				if (i < -387) {
+					i = 128;
+//					RDS_RTready = 0;
+					radioFlagi.RT = 0;
+				}
 
-//				if (1 == RDS_RTready) {
-	//			for (i = 130; i>-606;i-- ) {
-					SSD1306_puts(i,page3*8,rdsrt,1,1,0);
-					SSD1306_refreshPages(page3,3,0,127);
+			SSD1306_puts(i, page3 * 8, rdsrt, 1, 1, 0);
+			SSD1306_refreshPages(page3, 3, 0, 127);
 
-	//			}
-				// *************** test 3 ************** DZIAŁA !
-				// https://www.avrfreaks.net/forum/ssd1306-lcd-initialization-commands
+			SSD1306_cmd(SSD1306_COLUMNADDR); 					// 0x21 COMMAND
+			SSD1306_cmd(0); 							// Column start address
+			SSD1306_cmd(SSD1306_WIDTH - 1); 			// Column end address
 
-				SSD1306_cmd(SSD1306_COLUMNADDR); 					// 0x21 COMMAND
-				SSD1306_cmd(0); 									// Column start address
-				SSD1306_cmd(SSD1306_WIDTH-1); 						// Column end address
+			SSD1306_cmd(SSD1306_PAGEADDR); 					// 0x22 COMMAND
+			SSD1306_cmd(0); 							// Start Page address
+			SSD1306_cmd((SSD1306_HEIGHT / 8) - 1);			// End Page address
 
-				SSD1306_cmd(SSD1306_PAGEADDR); 					// 0x22 COMMAND
-				SSD1306_cmd(0); 									// Start Page address
-				SSD1306_cmd((SSD1306_HEIGHT/8)-1);					// End Page address
+			i--;
 
-//				RDS_RTready=0;
-//				}
-
-				fm_readRDS(rdsname, rdsrt);
-				fm_getRssi ();
-			    SSD1306_puts(11,page6*8, glosnik,2,1,0);
-			//		    SSD1306_drawKnownBitmap_P(34,page6*8-1,RAMKAP3x16,1); // rysuj bitmapehar
-
-			    SSD1306_put_int(45,page7*8, rssi,1,0,1);
-
-			    pokazHz(66,page6*8, fm_getChannel10x(),2,1,0);
-
-
-
-
-			    SSD1306_display();
-				RDStest = 0;
 			}
+			fm_readRDS(rdsname, rdsrt);
+		}
+
+		if (danePozostale) {
+
+			fm_getRssi();
+			SSD1306_puts(11, page6 * 8, glosnik, 2, 1, 0);
+			SSD1306_put_int(45, page7 * 8, rssi, 1, 0, 1);
+			pokazHz(66, page6 * 8, fm_getChannel10x(), 2, 1, 0);
+			SSD1306_display();
+			danePozostale = 0;
+		}
 
 
-
-
-		switch(uart_getc()) {
-			case 'g':
-				fm_seek(1);
-				uart_putint(fm_getChannel10x(), 10);
-
-				break;
-			case 'd':
-				fm_seek(0);
-				uart_putint(fm_getChannel10x(), 10);
-
-				break;
-			case '+':
-//				fm_readRDS(rdsdata, radiotext);
-				fm_setVolume(glosnosc+1);
-				uart_putint(glosnosc, 10);
-
-				break;
-			case '-':
-//				fm_readRDS(rdsdata, radiotext);
-				fm_setVolume(glosnosc-1);
-				uart_putint(glosnosc, 10);
-				break;
-			case 'r':
-//				uart_putint( fm_readRDS(rdsdata, radiotext), 10);
-				uart_puts(rdsname);
-				uart_puts("\n\r");
-				uart_puts(rdsrt);
-				uart_puts("\n\r");
-				uart_putint(godziny+offsetutc/2, 10);
-				uart_puts(":");
-				uart_putint(minuty, 10);
-				uart_puts(" , offset: ");
-				uart_putint(offsetutc, 10);
-				uart_puts("\n\r");
-				break;
-			case 's':
-				pokaz_rejestry(0x00, 0x0f, si4703_registers);
-				break;
+		if (klawisz == 20) {
+			fm_seek(1);
+//			fm_setVolume(glosnosc + 1);
+			uart_putint(glosnosc, 10);
+			klawisz = 0;
 		}
 
 
 
+
+		switch (uart_getc()) {
+		case 'g':
+			fm_seek(1);
+			uart_putint(fm_getChannel10x(), 10);
+
+			break;
+		case 'd':
+			fm_seek(0);
+			uart_putint(fm_getChannel10x(), 10);
+
+			break;
+		case '+':
+//				fm_readRDS(rdsdata, radiotext);
+			fm_setVolume(glosnosc + 1);
+			uart_putint(glosnosc, 10);
+
+			break;
+		case '-':
+//				fm_readRDS(rdsdata, radiotext);
+			fm_setVolume(glosnosc - 1);
+			uart_putint(glosnosc, 10);
+			break;
+		case 'r':
+//				uart_putint( fm_readRDS(rdsdata, radiotext), 10);
+			uart_puts(rdsname);
+			uart_puts("\n\r");
+			uart_puts(rdsrt);
+			uart_puts("\n\r");
+			uart_putint(godziny + offsetutc / 2, 10);
+			uart_puts(":");
+			uart_putint(minuty, 10);
+			uart_puts(" , offset: ");
+			uart_putint(offsetutc, 10);
+			uart_puts("\n\r");
+			break;
+		case 's':
+			pokaz_rejestry(0x00, 0x0f, si4703_registers);
+			break;
+		}
 
 	}
 
@@ -263,11 +238,27 @@ void pokaz_rejestry (uint8_t start, uint8_t stop, uint16_t * bufor){
 
 ISR (TIMER2_COMPA_vect) {
 
-licznik++;
-if (licznik % 10 == 0) RDStest = 1;
+	licznik++;
+	if (licznik % 4 == 0)
+		RDStest = 1;			// co 40 ms sprawdzaj rds, przesuń pasek newsów
+	if (licznik % 10 == 0)
+		danePozostale = 1;// co 100 ms aktualizuj glośność, częstotliwość, RSSI
+
+	if (!(PINB & (1 << PB0)) && (klawisz < 20)) {// co 20 ms sprawdzenie klawiszy
+//	uart_putint(klawisz, 10);
+		klawisz++;
+
+	}
+
+
+	uint16_t n;
+	n = Timer1; /* 100Hz Timer1 */
+	if (n)
+		Timer1 = --n;
+//	n = Timer2; /* 100Hz Timer2 */
+//	if (n)
+//		Timer2 = --n;
 }
-
-
 
 
 

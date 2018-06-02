@@ -55,19 +55,30 @@ enum DIRECTION {
 //#define RDS_AVAILABLE (2)
 
 
-extern uint8_t RDS_PSready;
-extern uint8_t RDS_RTready;
-extern uint8_t RDS_CTready;
+//extern uint8_t RDS_PSready;
+//extern uint8_t RDS_RTready;
+//extern uint8_t RDS_CTready;
+
+// eksperyment pole bitowe
+struct StrFlagi {
+	uint8_t 	PS:1;
+	uint8_t 	RT:1;
+	uint8_t 	CT:1;
+	uint8_t 	AB:1;
+	uint8_t 	stereo:1;
+};
+
+extern struct StrFlagi radioFlagi;
 //------------------------------------------------  Zmienne globalne --------------------
 
 extern uint16_t si4703_registers[]; 				//There are 16 registers, each 16 bits large
 extern uint8_t reg_index;							// chyba nie musi być globalna
 // extern uint16_t ret;
-extern uint8_t stereo;
+// extern uint8_t stereo;
 extern uint16_t kanal10x;
 // extern char rdsdata[];
 // extern char radiotext[];
-extern int glosnosc;
+extern uint8_t glosnosc;
 extern char glosnik[];
 extern uint8_t rssi;
 //extern uint8_t sksnr;

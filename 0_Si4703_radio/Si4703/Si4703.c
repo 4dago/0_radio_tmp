@@ -18,9 +18,9 @@
 uint16_t si4703_registers[16]; 				//There are 16 registers, each 16 bits large
 // uint8_t reg_index;							// chyba nie musi być globalna
 //uint16_t ret;
-uint8_t stereo;
+// uint8_t stereo;
 uint16_t kanal10x;
-int glosnosc;
+uint8_t glosnosc;
 uint8_t godziny;
 uint8_t minuty;
 uint8_t offsetutc;
@@ -36,10 +36,14 @@ uint8_t offsetutc1;
 #define LAST_ALLOWED_CHAR (0x7f)
 
 // rds buffering
-uint8_t RDS_PSready = 0;
-uint8_t RDS_RTready = 0;
-uint8_t RDS_CTready = 0;
+//uint8_t RDS_PSready = 0;
+//uint8_t RDS_RTready = 0;
+//uint8_t RDS_CTready = 0;
 uint8_t A_B = 0;
+
+
+
+struct StrFlagi radioFlagi;
 
 char rdsdata[9];
 char rdsdata1[9];
@@ -195,7 +199,8 @@ void fm_readRDS(char* ps, char* rt) {
 						strcpy(ps, rdsdata);
 //						clearStringBuff(rdsdata, 8);
 						clearStringBuff(rdsdata1, 8);
-						RDS_PSready = 1;
+//						RDS_PSready = 1;
+						radioFlagi.PS=1;
 					} // if
 				} // if
 			} // if
@@ -236,20 +241,17 @@ void fm_readRDS(char* ps, char* rt) {
 							radiotext1[64] = '\0';
 							strcpy(rt, radiotext1); //Kopiujemy otrzymany tekst do tablicy dostępnej dla innych modułów
 							clearStringBuff(radiotext1, 65);
-							RDS_RTready = 1;
+//							RDS_RTready = 1;
+							radioFlagi.RT = 1;
 							break;
 						}
-//					}
-
-
 			} else {
 				strcpy(rt, radiotext1); //Kopiujemy otrzymany tekst do tablicy dostępnej dla innych modułów
 				clearStringBuff(radiotext1, 65);
 				A_B = A_B_tmp;
-				RDS_RTready = 1;
+//				RDS_RTready = 1;
+				radioFlagi.RT = 1;
 			}
-
-//			rdschanged = 1;
 		}
 			;
 			break;
@@ -266,27 +268,30 @@ void fm_readRDS(char* ps, char* rt) {
 
 				//Korekta odebranych znaków: LF=’ ‚, CR=’\0’ (znacznik końca stringa)
 				if (A_B_tmp == A_B) {											// jeśli ta sama przetwarzamy
-					considerrdschar(radiotext1, index + 2, Dh);
-					considerrdschar(radiotext1, index + 3, Dl);
+					considerrdschar(radiotext1, index , Dh);
+					considerrdschar(radiotext1, index +1 , Dl);
 
 //					for (uint8_t idx = 0; idx < 4; idx++) {
 
 						if ((Dh==0x0D)||(Dl==0x0D)) {	// CR=’\0’ (znacznik końca stringa)
 							A_B = !A_B_tmp;										// aktualizacja flagi A_B
-							radiotext1[33] = '\0';
+							radiotext1[32] = '\0';
 							strcpy(rt, radiotext1); //Kopiujemy otrzymany tekst do tablicy dostępnej dla innych modułów
 							clearStringBuff(radiotext1, 65);
-							RDS_RTready = 1;
+//							RDS_RTready = 1;
+							radioFlagi.RT = 1;
 							break;
 						}
 //					}
 
 
 			} else {
+				radiotext1[32] = '\0';
 				strcpy(rt, radiotext1); //Kopiujemy otrzymany tekst do tablicy dostępnej dla innych modułów
 				clearStringBuff(radiotext1, 65);
 				A_B = A_B_tmp;
-				RDS_RTready = 1;
+//				RDS_RTready = 1;
+				radioFlagi.RT = 1;
 			}
 		}
 			;
@@ -302,7 +307,8 @@ void fm_readRDS(char* ps, char* rt) {
 				godziny = godz;
 				minuty = min;
 				offsetutc = offset;
-				RDS_CTready = 1;
+//				RDS_CTready = 1;
+				radioFlagi.CT = 1;
 			} else {
 				godziny1 = godz;
 				minuty1 = min;
@@ -381,7 +387,7 @@ uint16_t fm_seek(enum DIRECTION dir) {
 	} 															//seek complete!
 //	si4703_readRegisters();									// aktualizacja
 	int valueSFBL = si4703_registers[STATUSRSSI] & (1<<SFBL); 	//Store the value of SFBL
-	stereo = ( si4703_registers[STATUSRSSI] & (1<<ST));			// stereo?
+	radioFlagi.stereo = ( si4703_registers[STATUSRSSI] & (1<<ST));			// stereo?
 	rssi = si4703_registers[STATUSRSSI];						// rssi
 	si4703_registers[POWERCFG] &= ~(1<<SEEK); 					//Clear the seek bit after seek has completed / zeruje SFBL
 	si4703_writeRegisters2_7();
@@ -608,8 +614,7 @@ void fm_readRDS(char* ps, char* rt) {
  Parametry:	brak
  Zwraca: uint16_t kanał x 10 (liczba całkowita)
 *************************************************************************/
-//Reads the current channel from READCHAN
-//Returns a number like 973 for 97.3MHz
+
 uint16_t fm_getChannel10x(void) {
 	si4703_readRegisters();
 	uint16_t channel = si4703_registers[READCHAN] & 0x03FF; 			//Mask out everything but the lower 10 bits

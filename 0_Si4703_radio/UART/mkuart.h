@@ -26,7 +26,7 @@
  //#define UART_DE_NADAWANIE  UART_DE_PORT &= ~UART_DE_BIT
 
 
-#define UART_RX_BUF_SIZE 32 									// bufor odbiorczy 32 bajtÓw *** musi być potęgą 2 aby działał cyklicznie 32/64/128
+#define UART_RX_BUF_SIZE 16 									// bufor odbiorczy 32 bajtÓw *** musi być potęgą 2 aby działał cyklicznie 32/64/128
 #define UART_RX_BUF_MASK ( UART_RX_BUF_SIZE - 1)				// definiujemy maskę dla naszego bufora
 
 #define UART_TX_BUF_SIZE 16 									// definiujemy bufor nadawania o rozmiarze 16 bajtów jw.

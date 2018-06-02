@@ -91,7 +91,7 @@ typedef enum {page0, page1, page2, page3, page4, page5, page6, page7} TPAGE;
     /*********************deklaracja zmiennych
  */
 extern const uint8_t font[];
-extern const uint8_t font2[];
+//extern const uint8_t font2[];		// polskie win
 extern int cursor_x, cursor_y;
 /**
  * DEKLARACJE FUNKCJI
