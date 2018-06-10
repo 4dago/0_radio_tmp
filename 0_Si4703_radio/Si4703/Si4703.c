@@ -21,12 +21,12 @@ uint16_t si4703_registers[16]; 				//There are 16 registers, each 16 bits large
 // uint8_t stereo;
 uint16_t kanal10x;
 uint8_t glosnosc;
-uint8_t godziny;
-uint8_t minuty;
-uint8_t offsetutc;
-uint8_t godziny1;
-uint8_t minuty1;
-uint8_t offsetutc1;
+//uint8_t godziny;
+//uint8_t minuty;
+//uint8_t offsetutc;
+//uint8_t godziny1;
+//uint8_t minuty1;
+//uint8_t offsetutc1;
 //uint8_t godzin2;
 //uint8_t minuty2;
 //uint8_t offsetutc2;
@@ -93,9 +93,9 @@ void clearRDSBuff(void) {
 //	uint16_t channel = (si4703_registers[READCHAN] & 0x03FF) + 875;				//zrobić inaczej
 	clearStringBuff(rdsdata, 8);
 	clearStringBuff(radiotext1, 64);
-	godziny = 0;
-	minuty = 0;
-	offsetutc = 0;
+//	godziny = 0;
+//	minuty = 0;
+//	offsetutc = 0;
 //	str_putfreq(rdsdata, channel, 0);											//zrobic inaczej
 //	rdschanged = 1;
 //	fakerds = 1;
@@ -299,7 +299,7 @@ void fm_readRDS(char* ps, char* rt) {
 
 		case RDS_GROUP_TYPE_4A: {					// godzina, daty nie dekoduję
 
-			uint8_t min = (d & 0x0FC0) >> 6;				//maskowanie minut
+/*			uint8_t min = (d & 0x0FC0) >> 6;				//maskowanie minut
 			uint8_t godz = ((d & 0xF000) >> 12) | ((c & 0x0001) << 5);
 			uint8_t offset = (d & 0x001F);
 			if ((godziny1 == godz) && (minuty1 == min)
@@ -313,7 +313,7 @@ void fm_readRDS(char* ps, char* rt) {
 				godziny1 = godz;
 				minuty1 = min;
 				offsetutc1 = offset;
-			}
+			}*/
 		}
 			;
 			break;
@@ -662,12 +662,11 @@ void si4703_init(void) {
 
 	//	4. radio włączone, konfiguracja
 	si4703_readRegisters();					// aktualizacja danych
-	si4703_registers[POWERCFG] |= (1<<DMUTE)|(1<<ENABLE);		// Wyłącz mute; włącz radio
+	si4703_registers[POWERCFG] |= (1<<ENABLE);	// włącz radio
 	si4703_registers[SYSCONFIG1] |= (1<<RDS); 	//Enable RDS (wersja standard)
 	si4703_registers[SYSCONFIG1] |= (1<<DE); 	//50kHz Europe setup
 	si4703_registers[SYSCONFIG2] |= (1<<SPACE0); 				//100kHz channel spacing for Europe
-	si4703_registers[SYSCONFIG2] &= 0xFFF0; 	// Clear volume bits
-	si4703_registers[SYSCONFIG2] |= 0x0003; 	// Mała głośność
+	si4703_registers[SYSCONFIG2] &= 0xFFF0; 	// wyłącz głos /mute/ głos włączany w main()
 	si4703_writeRegisters2_7(); 				//Update
 	_delay_ms(110);								// powerup time p.12 AN230
 	si4703_readRegisters();					// aktualizacja danych
