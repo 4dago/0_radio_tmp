@@ -257,7 +257,7 @@ int main(void) {
 		}
 
 		if (!Timer3) {
-			Timer3 = 5;								// co 50ms przesuwaj pasek
+			Timer3 = 3;								// co 50ms przesuwaj pasek
 
 			static int i;
 

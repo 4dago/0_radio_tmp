@@ -85,11 +85,11 @@ void check_and_load( void ) {
 //	uint8_t * ram_wsk = (uint8_t*) &ram_memo;
 
 	copy_eem_to_ram();
-	if (!0xffff == ram_memo.Mem1) {			// jesli ustawiony
+	if (0xffff != ram_memo.Mem1) {			// jesli ustawiony
 		fm_setChannel(ram_memo.Mem1);
 		return;
 	}
-	if (!0xffff == ram_memo.Mem2) {
+	if (0xffff != ram_memo.Mem2) {
 		fm_setChannel(ram_memo.Mem2);
 		return;
 	}
